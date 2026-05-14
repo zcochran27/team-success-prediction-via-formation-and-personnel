@@ -1,0 +1,28 @@
+# Core scientific stack
+numpy>=1.26,<2.2
+pandas>=2.1,<2.3
+scikit-learn>=1.4,<1.6
+
+# Deep learning + graph neural networks
+torch>=2.2,<2.5
+torch-geometric>=2.5,<2.7
+
+# Gradient boosting baselines (either is sufficient; both pinned for parity)
+xgboost>=2.0,<2.2
+lightgbm>=4.3,<4.6
+
+# Graph utilities and visualization
+networkx>=3.2,<3.5
+matplotlib>=3.8,<3.10
+seaborn>=0.13,<0.14
+
+# Dimensionality reduction (archetype EDA)
+umap-learn>=0.5.5,<0.6
+
+# Config + notebooks
+pyyaml>=6.0,<7.0
+jupyter>=1.0,<2.0
+ipykernel>=6.29,<7.0
+
+# Testing
+pytest>=8.0,<9.0

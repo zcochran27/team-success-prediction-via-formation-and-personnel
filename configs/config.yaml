@@ -1,0 +1,54 @@
+# D1 Soccer Prediction — central configuration.
+# All paths are relative to the repo root unless otherwise noted.
+
+data_paths:
+  raw: data/raw                       # raw Wyscout event logs (gitignored)
+  processed: data/processed           # cleaned, filtered event data
+  team_seasons: data/team_seasons     # final team-season observations
+  archetype_artifacts: data/processed/archetype_artifacts  # fitted cluster models + player->archetype map
+
+# Intra-event clustering: number of clusters per event type.
+# These are applied within each position group.
+event_clustering:
+  n_clusters_per_event:
+    pass: 4         # e.g. short / long / progressive / lateral
+    dribble: 3
+    tackle: 2
+    shot: 3
+  random_state: 0
+
+# Archetype clustering: number of archetypes per position group.
+archetype_clustering:
+  n_archetypes_per_group:
+    CD: 3           # Center Defenders
+    WD: 3           # Wide Defenders (full-backs)
+    CM: 4           # Center Midfielders
+    CF: 3           # Center Forwards
+    WP: 3           # Wide Players (wide mids + wingers)
+  random_state: 0
+
+# Cross-validation harness.
+evaluation:
+  k_folds: 5
+  random_seed: 42
+  targets:
+    - win_rate
+    - points_per_game
+
+# GNN architecture / training hyperparameters (Models 3 and 4).
+model:
+  gnn_layers: 2             # 2-3 layers recommended
+  layer_type: gcn           # gcn | gat
+  hidden_dim: 64
+  dropout: 0.1
+  learning_rate: 0.001
+  weight_decay: 0.0
+  epochs: 100
+  batch_size: 32
+
+# Gradient boosting hyperparameters (Models 1 and 2).
+baseline:
+  estimator: xgboost        # xgboost | lightgbm
+  n_estimators: 500
+  max_depth: 6
+  learning_rate: 0.05

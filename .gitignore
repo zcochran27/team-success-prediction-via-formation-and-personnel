@@ -1,0 +1,30 @@
+# Data — large / proprietary; do not commit (but keep the directories tracked)
+data/raw/*
+data/processed/*
+data/team_seasons/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!data/team_seasons/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Editor / OS
+.vscode/
+.idea/
+.claude/
+.DS_Store
+Thumbs.db
