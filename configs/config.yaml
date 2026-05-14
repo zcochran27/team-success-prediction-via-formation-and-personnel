@@ -52,6 +52,14 @@ archetype_clustering:
     GK:  2          # Goalkeepers
   random_state: 0
 
+# Formation-snapshot pipeline.
+formations:
+  # Sub-cluster collapse window (minutes). Consecutive sub-induced snapshots
+  # whose first sub falls within this many minutes of the cluster's first sub
+  # are merged into one segment whose personnel reflects the post-last-sub
+  # lineup. Formation changes are always hard barriers regardless of T.
+  sub_cluster_window_min: 10
+
 # Cross-validation harness.
 evaluation:
   k_folds: 5

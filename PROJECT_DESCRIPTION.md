@@ -225,9 +225,92 @@ the per-season archetype map to attach `home_archetype_<n>` /
 pipeline's per-season threshold receive `NaN`; this is informative
 missingness, not an error.
 
-The final snapshot table at
-`data/processed/lineup_snapshots.parquet` is the base training data for
-all model variants in Section 6.
+### 5.5 Sub-cluster collapse
+
+The joint-stable windows produced by Section 5.1 turned out to be
+heavily over-fragmented for tactical modeling. Diagnostic inspection of
+the raw snapshot table revealed that **92% of window boundaries were
+substitutions, not formation changes**: each player swap forced a new
+joint window even though both teams' shapes were unchanged. The
+fragmentation was twofold:
+
+- *Count distortion.* 39% of snapshot rows lasted under 3 minutes, yet
+  those short rows represented only 8.5% of total match time. A naive
+  regression would have treated them as 39% of the training signal.
+- *Target distortion.* Rate-normalizing xG to per-30 minutes (Section
+  3.2) blew up on tiny windows. A single 0.7-xG shot in a 30-second
+  sub-induced window inflates to >40 xG/30. The raw target distribution
+  had a standard deviation of 1.59 and 1st/99th percentiles of −4.0 /
+  +5.1 — all driven by short-window outliers, not by real chance-
+  creation variance.
+
+The fix is a one-pass **sub-cluster collapse** applied to the snapshot
+table before the focal-perspective reframing. Within each match,
+consecutive snapshots whose only change from their predecessor was a
+substitution are merged together as long as the cluster's first sub
+occurred within a window of length T (configured at T = 10 minutes) of
+the current snapshot. A new segment is opened whenever:
+
+- the match boundary is crossed,
+- *either* team's formation string changes (a hard barrier — never
+  merged across), or
+- the next sub event falls more than T minutes after the cluster's
+  first sub (it's too late to belong to the current cluster, so it
+  opens a new one).
+
+Within each merged segment, the recorded personnel for every slot is
+the lineup from the **last underlying snapshot** of the segment —
+i.e., the post-last-sub lineup that the coach committed to after the
+substitution flurry resolved. xG, goals, and duration are summed
+across the underlying snapshots; differentials and per-30 rates are
+recomputed from the merged totals.
+
+**Why this is tactically sufficient.** When a coach makes a flurry of
+substitutions in a 10-minute window, the meaningful tactical state is
+the lineup that plays out the *remainder* of the segment after the
+swaps are done. The intermediate snapshots inside the cluster (e.g.,
+"two of three subs have happened; the third hasn't yet") are transient
+artifacts of the order in which the changes were keyed into the match
+log, not committed tactical states.
+
+The information loss is bounded and small:
+
+- The "extra credit" given to a player who came on in the middle or
+  end of a cluster — i.e., the minutes they're credited with that they
+  did not actually play — is **bounded above by T = 10 minutes per
+  cluster, by construction.**
+- Across all merged segments, the recorded post-cluster player was on
+  the pitch for a mean of **94.3% of segment minutes** (median 100%).
+  Only 11% of slot-segments saw a recorded player on for less than 80%
+  of the segment.
+- Every formation change is preserved as a hard barrier. No tactical-
+  shape information is averaged across formation transitions.
+
+**Before / after.**
+
+| Metric | Raw joint-stable windows | After T=10 cluster collapse |
+|---|---:|---:|
+| Snapshot rows (home/away frame) | 87,347 | 39,891 |
+| Training rows (focal frame) | 174,694 | 79,782 |
+| Avg segments per match | 15.9 | 7.3 |
+| Median segment duration | 3.9 min | 12.0 min |
+| 25th-percentile duration | 1.8 min | 8.8 min |
+| Share of segments under 3 min | 39.0% | 5.0% |
+| Target std (`xg_team1_minus_team2_per_30`) | 1.59 | 1.05 |
+| Target 99th percentile | 5.12 | 2.84 |
+| Target 1st percentile | −4.01 | −2.84 |
+| Mean post-cluster personnel coverage | — | 94.3% |
+| Formation transitions preserved | yes | yes (hard barrier) |
+
+The target standard deviation drops by 34% and the tails compress by
+nearly half, while every formation transition is preserved and the
+recorded personnel is on the pitch for ≥94% of segment minutes on
+average.
+
+The merged table — written to
+`data/processed/lineup_snapshots.parquet` after the focal-perspective
+reframing — is the base training data for all model variants in
+Section 6.
 
 ## 6. Model Pipeline
 
