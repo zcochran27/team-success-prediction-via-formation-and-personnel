@@ -7,24 +7,49 @@ data_paths:
   team_seasons: data/team_seasons     # final team-season observations
   archetype_artifacts: data/processed/archetype_artifacts  # fitted cluster models + player->archetype map
 
-# Intra-event clustering: number of clusters per event type.
-# These are applied within each position group.
+# Intra-event clustering. Each "logical event type" is either a primary
+# Wyscout event type (pass, shot, goalkeeper_exit) or a duel split on the
+# offensive_duel / defensive_duel secondary tag.
 event_clustering:
+  # Number of event-instance clusters per (position group, event type).
+  # Use `archetypes/notebooks/event_clustering.ipynb` (k-sweep cell) to
+  # pick k from elbow / silhouette curves and edit the values below.
   n_clusters_per_event:
-    pass: 4         # e.g. short / long / progressive / lateral
-    dribble: 3
-    tackle: 2
-    shot: 3
+    CD:  {pass: 12, offensive_duel: 5, defensive_duel: 6, aerial_duel: 5, shot: 5}
+    LWD: {pass: 12, offensive_duel: 5, defensive_duel: 4, aerial_duel: 4, shot: 5}
+    RWD: {pass: 12, offensive_duel: 5, defensive_duel: 4, aerial_duel: 4, shot: 5}
+    CM:  {pass: 12, offensive_duel: 4, defensive_duel: 6, aerial_duel: 6, shot: 7}
+    CF:  {pass: 12, offensive_duel: 6, defensive_duel: 4, aerial_duel: 6, shot: 7}
+    LWP: {pass: 12, offensive_duel: 6, defensive_duel: 4, aerial_duel: 6, shot: 7}
+    RWP: {pass: 12, offensive_duel: 6, defensive_duel: 4, aerial_duel: 6, shot: 7}
+    GK:  {pass: 4, goalkeeper_exit: 3}
+  # Which event types are used to characterize each position group.
+  # GK uses a different vocabulary from outfield players.
+  event_types_per_group:
+    CD:  [pass, offensive_duel, defensive_duel, aerial_duel, shot]
+    LWD: [pass, offensive_duel, defensive_duel, aerial_duel, shot]
+    RWD: [pass, offensive_duel, defensive_duel, aerial_duel, shot]
+    CM:  [pass, offensive_duel, defensive_duel, aerial_duel, shot]
+    CF:  [pass, offensive_duel, defensive_duel, aerial_duel, shot]
+    LWP: [pass, offensive_duel, defensive_duel, aerial_duel, shot]
+    RWP: [pass, offensive_duel, defensive_duel, aerial_duel, shot]
+    GK:  [pass, goalkeeper_exit]
+  # Minimum events a player must have logged across the relevant types
+  # to be included in the archetype clustering for their group.
+  min_events_per_player: 100
   random_state: 0
 
 # Archetype clustering: number of archetypes per position group.
 archetype_clustering:
   n_archetypes_per_group:
-    CD: 3           # Center Defenders
-    WD: 3           # Wide Defenders (full-backs)
-    CM: 4           # Center Midfielders
-    CF: 3           # Center Forwards
-    WP: 3           # Wide Players (wide mids + wingers)
+    CD:  3          # Center Defenders
+    LWD: 3          # Left full-backs / wing-backs
+    RWD: 3          # Right full-backs / wing-backs
+    CM:  4          # Center Midfielders
+    CF:  3          # Center Forwards
+    LWP: 3          # Left wingers + wide attacking mids + wide forwards
+    RWP: 3          # Right wingers + wide attacking mids + wide forwards
+    GK:  2          # Goalkeepers
   random_state: 0
 
 # Cross-validation harness.

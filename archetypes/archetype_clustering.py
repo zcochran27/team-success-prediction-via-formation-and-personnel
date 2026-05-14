@@ -1,8 +1,8 @@
 """Cluster the per-player feature vectors into archetypes, per position group.
 
 Archetypes are position-group-specific: clustering happens separately within
-each of the 5 position groups, so an archetype label is only meaningful in the
-context of its group (e.g. ``CD-0`` vs. ``CM-0`` are unrelated).
+each of the 6 position groups, so an archetype label is only meaningful in
+the context of its group (e.g. ``CD-0`` vs. ``CM-0`` are unrelated).
 """
 
 from __future__ import annotations
@@ -10,64 +10,77 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import joblib
 import pandas as pd
+from sklearn.cluster import KMeans
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+
+from .player_aggregation import feature_columns_for_group
 
 
 def fit_archetype_clusters(
     player_features: pd.DataFrame,
-    position_group: str,
+    feature_cols: list[str],
     n_clusters: int,
     random_state: int = 0,
-) -> Any:
-    """Fit a clustering model on the player feature vectors of a single position group.
+) -> dict[str, Any]:
+    """Fit ``StandardScaler -> KMeans`` on the per-player feature vectors of
+    a single position group.
 
-    Parameters
-    ----------
-    player_features
-        Output of :func:`archetypes.player_aggregation.build_player_feature_table`,
-        filtered to a single position group.
-    position_group
-        The position group being clustered (for logging / model metadata).
-    n_clusters
-        Number of archetypes to fit for this group.
-    random_state
-        Seed for reproducibility.
-
-    Returns
-    -------
-    Any
-        A fitted clustering model exposing ``.predict``.
+    ``player_features`` is expected to already be restricted to one position
+    group. Returns ``{"pipeline": fitted Pipeline, "feature_cols": ...}``.
     """
-    # TODO: scale features, fit clustering model.
-    raise NotImplementedError
+    X = player_features[feature_cols].values
+    pipe = Pipeline([
+        ("scaler", StandardScaler()),
+        ("kmeans", KMeans(
+            n_clusters=n_clusters,
+            random_state=random_state,
+            n_init=10,
+        )),
+    ])
+    pipe.fit(X)
+    return {"pipeline": pipe, "feature_cols": list(feature_cols)}
 
 
 def fit_all_archetype_clusters(
     player_features: pd.DataFrame,
+    event_types_per_group: dict[str, list[str]],
+    n_clusters_per_event: dict[str, dict[str, int]],
     n_archetypes_per_group: dict[str, int],
     output_dir: Path,
-) -> dict[str, Any]:
-    """Fit one archetype clustering model per position group and persist them.
-
-    Parameters
-    ----------
-    player_features
-        Player-level feature table (all groups).
-    n_archetypes_per_group
-        Mapping from position group to desired number of archetypes.
-    output_dir
-        Directory to serialize fitted models to.
-
-    Returns
-    -------
-    dict
-        Mapping from position group to fitted clustering model.
+    random_state: int = 0,
+) -> dict[str, dict[str, Any]]:
+    """Fit one archetype clustering pipeline per position group and persist
+    each to ``output_dir`` as ``<group>.joblib``.
     """
-    # TODO: loop over groups, call fit_archetype_clusters, save to disk.
-    raise NotImplementedError
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    models: dict[str, dict[str, Any]] = {}
+    for group, n_clusters in n_archetypes_per_group.items():
+        gdf = player_features[player_features["position_group"] == group]
+        if len(gdf) < n_clusters:
+            print(f"  [skip] {group}: only {len(gdf)} players (< n_clusters={n_clusters})")
+            continue
+        cols = feature_columns_for_group(event_types_per_group[group], n_clusters_per_event[group])
+        model = fit_archetype_clusters(
+            gdf,
+            feature_cols=cols,
+            n_clusters=n_clusters,
+            random_state=random_state,
+        )
+        joblib.dump(model, output_dir / f"{group}.joblib")
+        models[group] = model
+        print(f"  [fit ] {group}: {len(gdf):>5,} players -> k={n_clusters}")
+    return models
 
 
-def load_archetype_clusters(input_dir: Path) -> dict[str, Any]:
-    """Load previously fit per-position-group archetype models from disk."""
-    # TODO: deserialize models written by ``fit_all_archetype_clusters``.
-    raise NotImplementedError
+def load_archetype_clusters(input_dir: Path) -> dict[str, dict[str, Any]]:
+    """Load previously fit per-position-group archetype models."""
+    input_dir = Path(input_dir)
+    models: dict[str, dict[str, Any]] = {}
+    for path in sorted(input_dir.glob("*.joblib")):
+        models[path.stem] = joblib.load(path)
+    return models

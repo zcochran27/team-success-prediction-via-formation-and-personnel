@@ -28,3 +28,5 @@ env/
 .claude/
 .DS_Store
 Thumbs.db
+
+scripts/
