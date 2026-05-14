@@ -31,7 +31,7 @@ from .position_groups import (
 
 # Columns we actually need from the raw events parquet.
 EVENT_COLUMNS = [
-    "player_id", "player_position",
+    "player_id", "player_position", "matchId",
     "type_primary", "type_secondary",
     "start_x", "start_y", "end_x", "end_y",
     "pass_length", "pass_angle", "pass_accurate", "pass_height",
@@ -54,6 +54,23 @@ def load_events(raw_path: Path) -> pd.DataFrame:
     return df
 
 
+def attach_season(events: pd.DataFrame, raw_dir: Path) -> pd.DataFrame:
+    """Attach a ``season`` column (calendar year, ``int``) by joining
+    ``events.matchId -> matches.seasonId -> seasons.name`` and pulling the
+    leading 4-digit year out of the season name (e.g. ``"2024 Fall" -> 2024``).
+    """
+    matches = pd.read_parquet(raw_dir / "matches.parquet", columns=["wyId", "seasonId"])
+    seasons = pd.read_parquet(raw_dir / "seasons.parquet", columns=["seasonId", "name"])
+    seasons["season"] = seasons["name"].str.extract(r"(\d{4})")[0].astype(int)
+    season_by_match = (
+        matches.merge(seasons[["seasonId", "season"]], on="seasonId", how="left")
+               .set_index("wyId")["season"]
+    )
+    out = events.copy()
+    out["season"] = out["matchId"].map(season_by_match).astype("Int64")
+    return out
+
+
 def prepare_events(events: pd.DataFrame) -> pd.DataFrame:
     print("[prep] assigning position_group + logical_event_type")
     events = assign_position_groups(events, position_col="player_position")
@@ -73,9 +90,13 @@ def prepare_events(events: pd.DataFrame) -> pd.DataFrame:
         print(f"[prep] dropped {n_junk:,} passes with end at (0, 0)")
 
     # Keep only the rows that matter for any downstream step.
-    keep = events["position_group"].notna() & events["logical_event_type"].notna()
+    keep = (
+        events["position_group"].notna()
+        & events["logical_event_type"].notna()
+        & events["season"].notna()
+    )
     events = events.loc[keep].copy()
-    print(f"[prep] retained {len(events):,} rows after group/type filter")
+    print(f"[prep] retained {len(events):,} rows after group/type/season filter")
     print("       group counts:")
     print(events["position_group"].value_counts().to_string())
     print("       logical_event_type counts:")
@@ -99,6 +120,7 @@ def run(config_path: Path = Path("configs/config.yaml")) -> None:
     rs_arch = cfg["archetype_clustering"].get("random_state", 0)
 
     events = load_events(raw_dir / "all_events.parquet")
+    events = attach_season(events, raw_dir)
     events = prepare_events(events)
 
     print("\n[step 1/3] fitting intra-event cluster models")

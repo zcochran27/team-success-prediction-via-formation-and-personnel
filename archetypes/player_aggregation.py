@@ -80,49 +80,66 @@ def build_player_feature_table(
     min_events_per_player: int = 100,
     output_path: Path | None = None,
 ) -> pd.DataFrame:
-    """Build a player-level feature table for archetype clustering.
+    """Build a player-season-level feature table for archetype clustering.
 
     ``events`` must already have ``position_group``, ``logical_event_type``,
-    and ``cluster`` columns attached.
+    ``season``, and ``cluster`` columns attached.
 
     ``n_clusters_per_event`` is nested: ``{group: {event_type: k}}``.
 
-    Players are split per position group (each player belongs to the group
-    they accumulated the most events for) and only players with at least
-    ``min_events_per_player`` relevant events are retained.
+    One row per ``(player_id, season)``: each player-season is assigned the
+    position group they logged the most relevant events in *that season*, and
+    the feature vector is computed from that season's events only. A
+    player-season is dropped if it has fewer than ``min_events_per_player``
+    relevant events in its primary group, so the same player can appear in
+    some seasons and not others -- and can land in different archetypes
+    across seasons.
     """
-    # Determine each player's primary position group by event volume on the
-    # event types relevant to that group.
+    # Determine each (player, season)'s primary position group by event
+    # volume on the event types relevant to that group, that season.
     relevant_rows = []
     for group, event_types in event_types_per_group.items():
         sub = filter_events_by_group(events, group, event_types)
         relevant_rows.append(
-            sub.groupby("player_id").size().rename("n").reset_index().assign(position_group=group)
+            sub.groupby(["player_id", "season"]).size()
+               .rename("n").reset_index().assign(position_group=group)
         )
     counts = pd.concat(relevant_rows, ignore_index=True)
     primary = (
         counts.sort_values("n", ascending=False)
-              .drop_duplicates(subset=["player_id"], keep="first")
+              .drop_duplicates(subset=["player_id", "season"], keep="first")
               .reset_index(drop=True)
     )
     primary = primary[primary["n"] >= min_events_per_player]
 
-    # For each (player, primary_group) build the feature vector using only
-    # the event types relevant to that group, restricted to events the
-    # player produced while playing in that group.
+    # For each (player, season, primary_group) build the feature vector using
+    # only the event types relevant to that group, restricted to events the
+    # player produced while playing in that group that season.
     rows: list[dict[str, Any]] = []
     for group, gdf in primary.groupby("position_group"):
         event_types = event_types_per_group[group]
-        player_ids = set(gdf["player_id"])
+        keys = set(zip(gdf["player_id"], gdf["season"]))
         ev = events[
             (events["position_group"] == group)
-            & (events["player_id"].isin(player_ids))
             & (events["logical_event_type"].isin(event_types))
         ]
         group_k = n_clusters_per_event[group]
-        for pid, pdf in ev.groupby("player_id"):
+        for (pid, season), pdf in ev.groupby(["player_id", "season"]):
+            if (pid, season) not in keys:
+                continue
             vec = aggregate_player_vector(pdf, event_types, group_k)
-            rows.append({"player_id": pid, "position_group": group, **vec.to_dict()})
+            # Modal raw Wyscout position the player held this season (among
+            # events that fed the feature vector). Ties broken by first
+            # occurrence -- arbitrary but stable.
+            pos_mode = pdf["player_position"].mode()
+            player_position = pos_mode.iloc[0] if not pos_mode.empty else pd.NA
+            rows.append({
+                "player_id": pid,
+                "season": int(season),
+                "position_group": group,
+                "player_position": player_position,
+                **vec.to_dict(),
+            })
 
     table = pd.DataFrame(rows).fillna(0.0)
 

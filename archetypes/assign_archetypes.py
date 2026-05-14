@@ -33,7 +33,7 @@ def save_player_archetype_map(assignments: pd.DataFrame, output_path: Path) -> N
     """Persist the player->archetype mapping to ``output_path`` as parquet."""
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    cols = ["player_id", "position_group", "archetype"]
+    cols = ["player_id", "season", "position_group", "player_position", "archetype"]
     assignments[cols].to_parquet(output_path, index=False)
 
 
