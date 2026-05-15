@@ -1,0 +1,4 @@
+train rows: 59,096  |  test rows: 14,538
+training kind=position mode=single -> writing to artifacts\gnn_position_single/
+epoch   1 | train MSE 1.02832 | val MSE 0.96952 | MAE 0.5514 | r +0.053 | sign 0.430 | grad 0.148 | 94.6s  *
+epoch   2 | train MSE 1.02672 | val MSE 0.97053 | MAE 0.5507 | r +0.061 | sign 0.441 | grad 0.140 | 159.2s

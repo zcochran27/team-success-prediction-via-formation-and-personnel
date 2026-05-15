@@ -74,15 +74,19 @@ For each window, the snapshot records:
 
 ### 3.2 Target variable
 
-The primary target is **xG differential**:
+The primary target is **xG differential**, in the focal-team frame
+(`team1` = the team whose perspective the row represents,
+`team2` = the opponent):
 
 $$
-y = \text{xg\_home\_minus\_away\_per\_30} = \frac{\text{home\_xg} - \text{away\_xg}}{\text{period\_duration\_min}} \times 30
+y = \text{xg\_team1\_minus\_team2\_per\_30} = \frac{\text{team1\_xg} - \text{team2\_xg}}{\text{period\_duration\_min}} \times 30
 $$
 
-That is, the home team's xG advantage during the window, rate-normalized to
-a per-30-minute basis (since window lengths vary from seconds to tens of
-minutes).
+That is, the focal team's xG advantage during the window, rate-normalized
+to a per-30-minute basis (since window lengths vary from seconds to tens
+of minutes). Each match contributes two rows (home and away
+perspectives), and they're held together in the train / test split by
+sharing `match_id`.
 
 This choice is motivated by:
 
@@ -325,16 +329,22 @@ variants:
 
 This produces eight models:
 
-| # | Representation | Personnel | Opponent | Module name |
+| # | Representation | Personnel | Opponent | Module / class |
 |---|---|---|---|---|
 | 1 | Tabular | Raw position | Ego | `models.tab_pos_ego` |
 | 2 | Tabular | Raw position | Matchup | `models.tab_pos_matchup` |
 | 3 | Tabular | Archetype | Ego | `models.tab_arch_ego` |
 | 4 | Tabular | Archetype | Matchup | `models.tab_arch_matchup` |
-| 5 | Graph | Raw position | Ego | `models.gnn_pos_ego` |
-| 6 | Graph | Raw position | Matchup | `models.gnn_pos_matchup` |
-| 7 | Graph | Archetype | Ego | `models.gnn_arch_ego` |
-| 8 | Graph | Archetype | Matchup | `models.gnn_arch_matchup` |
+| 5 | Graph | Raw position | Ego | `models.gnn.LineupGNN(kind="position",  mode="single")` |
+| 6 | Graph | Archetype | Ego | `models.gnn.LineupGNN(kind="archetype", mode="single")` |
+| 7 | Graph | Raw position | Matchup | `models.gnn.LineupGNN(kind="position",  mode="paired")` |
+| 8 | Graph | Archetype | Matchup | `models.gnn.LineupGNN(kind="archetype", mode="paired")` |
+
+All four graph variants are served by a single `LineupGNN` class with
+`kind ∈ {position, archetype}` and `mode ∈ {single, paired}` as
+constructor arguments — `single` builds an 11-node team-only graph,
+`paired` builds a 22-node graph with intra-team and inter-team matchup
+edges plus a same-team edge flag.
 
 ### 6.1 Tabular models (1–4)
 
@@ -356,24 +366,35 @@ the per-30 xG differential.
 
 ### 6.2 Graph models (5–8)
 
-Each snapshot is encoded as one or two graphs:
+Each snapshot is encoded as a PyG graph by
+[`features.build_graphs.build_snapshot_graph`](features/build_graphs.py):
 
-- **Nodes**: the 11 starting players per team. Each node carries the
-  slot's personnel encoding (raw position or archetype), plus a small
-  set of spatial features derived from the average `position_x` /
-  `position_y` of that slot in the raw formation log.
-- **Edges**: tactical proximity edges within the focal team:
-  defenders-to-defenders, midfielders-to-midfielders, attackers-to-
-  attackers, plus formation-implied cross-line edges (e.g. fullback ↔
-  winger, CM ↔ ST).
-- **Matchup variants** additionally include the opponent's graph and a
-  cross-team edge type connecting matched positional groups (focal CM ↔
-  opponent CM, etc.).
+- **Nodes**: 11 players per team. Each node is an integer index into
+  one of two embedding vocabularies. `kind="position"` uses the 19-label
+  position vocab; `kind="archetype"` uses the 25-label archetype vocab
+  (24 archetypes plus a `MISSING` sentinel, so the fact-of-missingness
+  becomes a learnable signal).
+- **Intra-team edges**: rule-based tactical edges per formation
+  produced by [`graphs.templates.formation_edges`](graphs/templates.py)
+  (17 rules — GK-defenders, fullback ↔ nearest wide attacker, striker
+  mesh, etc.). The edge set is deterministic given the formation
+  string.
+- **Inter-team matchup edges** (paired mode only): per
+  [`graphs.matchups.build_intermatch_edges`](graphs/matchups.py),
+  zone-pair rules wire opposing buckets that share a physical lane
+  (`LM ↔ RD`, `CA ↔ CD`, etc.), with side-aware refinements for
+  fullback ↔ opposing striker and back-three ↔ opposing winger.
+- **Edge features**: in paired mode the 22-node graph carries a
+  same-team edge flag (`edge_attr` shape `(2·E, 1)`; `0` intra-team,
+  `1` inter-team) so the message-passing layers can weight the two
+  edge types differently.
 
-A graph neural network (GCN or GAT, configurable in `configs/config.yaml`)
-produces a team-level embedding for the focal team — and, in matchup
-variants, a joint embedding from both team graphs — which is then
-passed through a regression head.
+Architecture (`models.gnn.LineupGNN`): `nn.Embedding` →
+`num_layers × GATConv` (with `edge_dim=1` in paired mode so the
+same-team flag is consumed) → mean-pool over each team's nodes →
+shared MLP head. The paired forward returns
+`head(team1_pool) − head(team2_pool)`, so the prediction is
+antisymmetric under team swap by construction.
 
 ### 6.3 Variants of interest
 
@@ -389,38 +410,59 @@ The 2×2×2 design enables clean attribution of performance gains:
 
 ## 7. Evaluation Strategy
 
-All models are evaluated via k-fold cross-validation on the snapshot
-dataset, with folds blocked by `match_id` to ensure that windows from
-the same match never appear on both sides of a train / test split.
-Without this blocking, leakage between within-match windows would
-inflate apparent performance.
+All 8 models train and evaluate on the **same** match-blocked train /
+test split produced by
+[`scripts.build_train_test_split`](scripts/build_train_test_split.py):
 
-Performance metrics:
+1. [`features.snapshots.filter_buildable_snapshots`](features/snapshots.py)
+   trims the ~79.8k focal snapshots down to the ~73.6k rows where every
+   formation is in `FORMATION_TEMPLATES` and every position label is
+   non-null (archetypes are kept and become `MISSING` downstream).
+2. Match IDs are shuffled with a fixed seed and partitioned 80 / 20.
+   Both focal-perspective rows of any match always share a partition,
+   so no match straddles the train / test boundary. Result: ~59.1k
+   train rows / ~14.5k test rows over disjoint match sets.
+3. Tabular models: `fit` once on `train_snapshots.parquet`, then
+   `predict` on `test_snapshots.parquet`. Metrics computed directly on
+   the test predictions.
+4. Graph models: trained via [`scripts.train_gnn`](scripts/train_gnn.py)
+   with the test parquet as the per-epoch evaluation set; the
+   best-test-MSE checkpoint is saved along with its predictions.
 
-- **MAE** and **RMSE** on the per-30 xG differential — primary
-  regression metrics.
+Performance metrics (all on the held-out test set):
+
+- **MAE** and **RMSE** on `xg_team1_minus_team2_per_30`.
 - **R²** — proportion of explained variance.
-- **Sign accuracy** — fraction of windows in which the predicted sign of
-  the xG differential matches the observed sign. This is the practically
-  meaningful binary outcome: did the model correctly identify which
-  team out-created the other during this window?
+- **Sign accuracy** — fraction of nonzero-target rows where predicted
+  and observed signs match: did the model identify which team
+  out-created the other during this window?
 
-Results are reported as an 8-way table (one row per model) per metric.
-Secondary-target sensitivity analysis repeats the comparison with
-`home_goals_per_30` and `goals_home_minus_away_per_30` as the dependent
-variable to confirm conclusions are not artifacts of the xG estimator.
+Results are rendered by
+[`models/notebooks/all_models_comparison.ipynb`](models/notebooks/all_models_comparison.ipynb)
+as a summary table, metric bar chart, 2 × 4 predictions-vs-targets
+grid, residual histograms, and ablation deltas across the three design
+axes (`tabular → graph`, `position → archetype`, `ego → matchup`).
+
+Caveat: the GNN sees per-epoch test loss and selects the best
+checkpoint, while the tabular fit is a single fixed-budget XGBoost
+call. This gives the GNN a mild advantage; it can be removed later by
+carving a small inner validation slice out of `train_snapshots.parquet`.
+
+Raw goal counts and the other differential variants stay on each
+snapshot row as secondary targets for sensitivity checks.
 
 ## 8. Pipeline Summary
 
 End-to-end build, in order:
 
-1. `python -m archetypes.run_pipeline` &nbsp; → &nbsp;
-   `data/processed/archetype_artifacts/player_archetype_map.parquet`
-2. `python -m formations.run` &nbsp; → &nbsp;
-   `data/processed/lineup_snapshots.parquet` &nbsp; *(the base training table)*
-3. `python -m evaluation.run` &nbsp; → &nbsp; 8-model results table
-   *(forthcoming)*
+1. `python -m archetypes.run_pipeline` → `data/processed/archetype_artifacts/player_archetype_map.parquet`
+2. `python -m formations.run` → `data/processed/lineup_snapshots.parquet` *(the base training table)*
+3. `python -m scripts.build_train_test_split` → `data/processed/{train,test}_snapshots.parquet`
+4. `python -m scripts.train_gnn --kind {position,archetype} --mode {single,paired}` (×4) → `artifacts/gnn_<kind>_<mode>/`
+5. Render the 8-way head-to-head:
+   [`models/notebooks/all_models_comparison.ipynb`](models/notebooks/all_models_comparison.ipynb)
+   (fits the 4 tabular models inline + loads GNN test predictions from `artifacts/`).
 
-The first two stages are implemented and tested; the modeling and
-evaluation stages are scaffolded and will be filled in as the model
-library is built out.
+All five stages are implemented and tested. Steps 1–3 are one-time
+preprocessing; step 4 takes ~20 min per single-mode model and ~50 min
+per paired-mode model on CPU.

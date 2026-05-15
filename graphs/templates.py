@@ -24,7 +24,25 @@ The rule set (applied in order; see :func:`_build_edges`):
   9. Wingers (LW/LWF, RW/RWF) <-> same-side wide mids.
  10. Wingers <-> strikers and CAMs.
  11. Strikers mutually connected (forward-line cohesion).
- 12. Strikers <-> all central mids.
+ 12. Strikers <-> CM and CAM only (CDM is deliberately excluded -- the
+     deep pivot shouldn't have a direct line to the striker).
+ 13. LAM <-> every striker; RAM <-> every striker (advanced wide mids
+     feed the front line).
+ 14. Defensive triangle / double-pivot coverage: every fullback
+     (LB / RB / LWB / RWB) <-> every CDM. Closes the
+     fullback-outer-CB-CDM triangle and gives the double pivot a direct
+     line to the wing-back.
+ 15. Wide overload triangle: LB/LWB <-> every left wide mid (LM, LAM);
+     RB/RWB <-> every right wide mid (RM, RAM). Combined with rule 7
+     this forms the fullback-LM-LAM triangle on each flank.
+ 16. True 3-back wide cover: in formations with three CBs and no
+     fullbacks/wing-backs, the outer CBs cover the wide channel
+     themselves, so leftmost CB <-> LM and rightmost CB <-> RM.
+ 17. Lone striker support: when the formation has exactly one striker
+     AND no attacking mids (CAM / LAM / RAM), LM <-> ST and RM <-> ST.
+     With two strikers, or with an attacking-mid layer in front of the
+     wide mids, LM/RM already reach the front line one pass away
+     (through CMs or through CAM/LAM/RAM) and shouldn't jump that line.
 
 A formation's graph is identical across every match in which that
 formation is observed; different formations produce different graphs.
@@ -308,10 +326,72 @@ def _build_edges(template: list[tuple[str, float, float]]) -> list[tuple[int, in
         for b in st[i + 1:]:
             add(a, b)
 
-    # Rule 12 -- Strikers <-> all central mids.
+    # Rule 12 -- Strikers <-> CM and CAM only (NOT CDM). The deep pivot
+    # is intentionally kept off the front line -- it should reach the
+    # striker through the rest of the midfield.
     for s in st:
-        for c in central_mid:
+        for c in cm + cam:
             add(s, c)
+
+    # Rule 13 -- Advanced wide mids (LAM / RAM) <-> strikers.
+    lam = [i for i in left_mid if labels[i] == "LAM"]
+    ram = [i for i in right_mid if labels[i] == "RAM"]
+    for w in lam + ram:
+        for s in st:
+            add(w, s)
+
+    # Rule 14 -- Defensive triangle / double-pivot coverage.
+    # Every fullback <-> every CDM. Closes the fullback-outer-CB-CDM
+    # triangle (rule 2 wires fullback-CB, rule 3 wires CB-CDM) and
+    # provides the double-pivot-to-wingback connection that the press
+    # relies on.
+    for f in lb + rb:
+        for d in cdm:
+            add(f, d)
+
+    # Rule 15 -- Wide overload triangle.
+    # LB/LWB <-> {LM, LAM}; RB/RWB <-> {RM, RAM}. Combined with rule 7
+    # this closes the fullback-LM-LAM triangle on each flank. This
+    # extends rule 8 (which only picks the *single* closest wide
+    # attacker) so that both wide-mid slots are wired when both exist.
+    for f in lb:
+        for m in left_mid:
+            add(f, m)
+    for f in rb:
+        for m in right_mid:
+            add(f, m)
+
+    # Rule 16 -- True 3-back wide cover.
+    # In a back-three with no fullbacks / wing-backs (3-4-3, 3-4-1-2,
+    # 3-4-2-1) the outer CBs are responsible for the wide channel
+    # themselves, so wire LCB <-> LM and RCB <-> RM. Skip when the
+    # formation has wing-backs (3-5-2 / 5-x-y) -- the wing-back already
+    # links the wide line and adding CB <-> LM/RM would jump over them.
+    if cb and not lb and not rb:
+        leftmost_cb = max(cb, key=lambda i: template[i][2])
+        rightmost_cb = min(cb, key=lambda i: template[i][2])
+        for m in left_mid:
+            if labels[m] == "LM":
+                add(leftmost_cb, m)
+        for m in right_mid:
+            if labels[m] == "RM":
+                add(rightmost_cb, m)
+
+    # Rule 17 -- Lone striker support.
+    # With a single striker AND no attacking mids (CAM / LAM / RAM) to
+    # act as a buffer, LM and RM need a direct line to the front man
+    # (4-4-1, 4-1-4-1, 5-4-1, 4-5-1, 3-4-3). When attacking mids exist
+    # those nodes already feed the striker (rule 12 wires CAM<->ST,
+    # rule 13 wires LAM/RAM<->ST), so the wide mids stay one pass away.
+    attacking_mids = has("CAM", "LAM", "RAM")
+    if len(st) == 1 and not attacking_mids:
+        only_st = st[0]
+        for m in left_mid:
+            if labels[m] == "LM":
+                add(only_st, m)
+        for m in right_mid:
+            if labels[m] == "RM":
+                add(only_st, m)
 
     return sorted(edges)
 

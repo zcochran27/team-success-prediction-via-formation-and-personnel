@@ -1,169 +1,74 @@
 # D1 Soccer Prediction
 
-Predict the **xG differential** between two teams during a match window from
-formation, personnel, and player archetypes, using Wyscout event-level data.
+Predict the **xG differential** between two teams during a stable
+formation window from formation, personnel, and player archetypes,
+using Wyscout event-level data.
 
 The unit of observation is a **formation snapshot**: one row per
 `(match, joint-stable formation window)`. A window starts/ends whenever
-*either* team makes a formation change, so within each row both teams' shapes
-and 11-man lineups are constant. Each row predicts how lopsided chance
-creation was during that window (`xg_home_minus_away`, ideally normalized to
-`xg_home_minus_away_per_30` since window lengths vary).
+*either* team makes a formation change, so within each row both teams'
+shapes and 11-man lineups are constant. The row is then reframed into
+two **focal-perspective** rows (one per team) so each model predicts the
+focal team's xG advantage during the window, rate-normalized to per 30
+minutes (`xg_team1_minus_team2_per_30`).
+
+See [PROJECT_DESCRIPTION.md](PROJECT_DESCRIPTION.md) for the detailed
+research narrative; this file is the engineering quick-reference.
 
 ---
 
-## Research Design
+## Research design
 
-The project answers three questions simultaneously:
+Three orthogonal modeling choices define a **2 × 2 × 2 grid** of 8 model
+variants:
 
-1. Does representing team structure as a **graph** (vs. a flat feature vector)
-   improve prediction?
-2. Do richer **player archetypes** (vs. raw positional labels) improve
-   prediction?
-3. Does conditioning on the **opponent's formation and personnel** improve
-   prediction beyond just knowing your own team's setup?
+| Axis | Levels |
+|---|---|
+| input representation | tabular (XGBoost) · graph (GNN) |
+| personnel encoding | raw positions · per-season archetypes |
+| opponent in view | ego (focal team only) · matchup (both teams) |
 
-This produces a 2×2×2 model comparison (8 variants):
+| # | Module / class | rep | personnel | opponent |
+|---|---|---|---|---|
+| 1 | [`models.tab_pos_ego`](models/tab_pos_ego.py) | tabular | position | ego |
+| 2 | [`models.tab_pos_matchup`](models/tab_pos_matchup.py) | tabular | position | matchup |
+| 3 | [`models.tab_arch_ego`](models/tab_arch_ego.py) | tabular | archetype | ego |
+| 4 | [`models.tab_arch_matchup`](models/tab_arch_matchup.py) | tabular | archetype | matchup |
+| 5 | `LineupGNN(kind="position",  mode="single")` | graph | position | ego |
+| 6 | `LineupGNN(kind="archetype", mode="single")` | graph | archetype | ego |
+| 7 | `LineupGNN(kind="position",  mode="paired")` | graph | position | matchup |
+| 8 | `LineupGNN(kind="archetype", mode="paired")` | graph | archetype | matchup |
 
-| Structure | Personnel encoding | Opponent included? | Model |
-|-----------|--------------------|--------------------|-------|
-| Tabular | Raw positions | No  | Model 1 |
-| Tabular | Raw positions | Yes | Model 2 |
-| Tabular | Archetypes    | No  | Model 3 |
-| Tabular | Archetypes    | Yes | Model 4 |
-| Graph   | Raw positions | No  | Model 5 |
-| Graph   | Raw positions | Yes | Model 6 |
-| Graph   | Archetypes    | No  | Model 7 |
-| Graph   | Archetypes    | Yes | Model 8 |
+All four GNN variants share [`models.gnn.LineupGNN`](models/gnn.py);
+`kind` and `mode` are constructor arguments.
 
 Comparisons of interest:
-- Odd→even pairs (1 vs 2, 3 vs 4, …) — marginal value of including the opponent
-- 1 vs 3, 2 vs 4, 5 vs 7, 6 vs 8 — marginal value of archetypes
-- 1 vs 5, 2 vs 6, 3 vs 7, 4 vs 8 — marginal value of graph structure
-- 1 vs 8 — combined gain
 
-The "no opponent" variants see only the home team's formation + 11 player
-slots when predicting the home perspective (and symmetrically for away); the
-"with opponent" variants see both sides simultaneously.
+- **tabular → graph** (1↔5, 2↔7, 3↔6, 4↔8) — does graph structure add signal?
+- **position → archetype** (1↔3, 2↔4, 5↔6, 7↔8) — does archetype enrichment add signal?
+- **ego → matchup** (1↔2, 3↔4, 5↔7, 6↔8) — does conditioning on the opponent add signal?
 
 ---
 
-## Data Pipeline
+## Repo layout
 
-Two preprocessing pipelines run before any modeling. They produce the
-artifacts the feature builders consume.
-
-### Stage 1 — Player Archetype Pipeline (`archetypes/`)
-
-Builds a data-driven taxonomy of player roles, **per season** (so a player's
-archetype can change year over year).
-
-1. **Position group assignment** — partition each event/player into 8 groups:
-   `CD` (center defenders), `LWD` / `RWD` (wide defenders), `CM` (center mids),
-   `CF` (center forwards), `LWP` / `RWP` (wide players), `GK`.
-2. **Logical event types** — `pass`, `offensive_duel`, `defensive_duel`,
-   `aerial_duel`, `shot`, `goalkeeper_exit`. GK uses a smaller vocabulary
-   (`pass`, `goalkeeper_exit`).
-3. **Intra-event clustering** — within each `(group, event type)` pair, fit a
-   KMeans on the event-instance features to identify qualitatively distinct
-   subtypes (e.g. short vs. long passes, progressive vs. lateral duels).
-4. **Per-(player, season) aggregation** — for each `(player_id, season)`
-   pair, the player's primary position group that season is determined by
-   relevant-event volume; their feature vector encodes
-   `(% of total actions per event type, % in each sub-cluster)`. Player-seasons
-   that don't clear `min_events_per_player` are dropped.
-5. **Archetype clustering** — KMeans on the per-(player, season) vectors,
-   independently within each position group.
-6. **Assignment** — written to
-   `data/processed/archetype_artifacts/player_archetype_map.parquet` with schema
-   `player_id, season, position_group, player_position, archetype`.
-
-Run with `python -m archetypes.run_pipeline`. Notebooks under
-`archetypes/notebooks/` inspect each stage.
-
-### Stage 2 — Lineup Snapshot Pipeline (`formations/`)
-
-Pivots the per-player formation log (`data/raw/formations.parquet`) into the
-wide training table at `data/processed/lineup_snapshots.parquet`. Each row
-covers one match window during which **both** teams' formations and 11-man
-lineups were constant.
-
-1. **Joint-stable windows** — for each match, intersect the two teams'
-   formation timelines so each window covers a `[start, end)` interval where
-   neither team has changed shape.
-2. **Slot pivot** — write each of the 22 players into a numbered slot using
-   the modern English shirt-number convention: 1=GK, 2/3=RB/LB,
-   4/5=RCB/LCB, 6=CDM, 7/11=RW/LW, 8=CM, 9=ST, 10=CAM. Slot assignment is
-   driven by raw position label with `position_x` tiebreaks; ambiguous labels
-   (un-prefixed `CB`, multiple `CM`s) are disambiguated by depth rank.
-3. **Match-state features** — for each window, sum every shot's `shot_xg` and
-   count goals attributed to each team via `matches.home_team` /
-   `matches.away_team`. Adds raw counts (`home_xg`, `away_xg`, `home_goals`,
-   `away_goals`), home–away / away–home diffs, and `_per_30` rate variants of
-   all eight. `period_duration_min` is also stored.
-4. **Season + archetype enrichment** — each match is tagged with its calendar
-   season (extracted as the 4-digit year from `seasons.name`). For every one
-   of the 22 player slots, the player's archetype for that season is looked
-   up from the archetype map and stored as `home_archetype_<n>` /
-   `away_archetype_<n>`. Players who didn't clear the archetype pipeline's
-   per-season event threshold get `NaN` — this is informative missingness,
-   not a bug.
-
-Run with `python -m formations.run`. End-of-match windows are clamped using
-`matches.duration` (`Regular → 95'`, `ExtraTime → 125'`) so the open-ended
-final period of each team doesn't inflate the per-30 denominator.
-
-#### Snapshot schema (selected columns)
-
-```
-match_id, season, period_start_min, period_end_min, period_duration_min,
-home_team_id, away_team_id, home_formation, away_formation,
-home_player_1..11, home_position_1..11, home_archetype_1..11,
-away_player_1..11, away_position_1..11, away_archetype_1..11,
-home_xg, away_xg, home_goals, away_goals,
-xg_home_minus_away, xg_away_minus_home,
-goals_home_minus_away, goals_away_minus_home,
-{...all four}_per_30
-```
-
----
-
-## Target Variable
-
-**Primary target**: `xg_home_minus_away` (or its rate-normalized form,
-`xg_home_minus_away_per_30`). Predict how much one team out-created the other
-in expected-goal terms during a stable-formation window.
-
-Why this target:
-- xG smooths the high variance of raw goals (most windows have zero of
-  either) without losing directional signal.
-- Differential framing makes the prediction symmetric — `away - home` is just
-  the negative — so a single regression handles both perspectives.
-- Per-30 normalization is required for windows with very different durations
-  (median ~5 min, max ~42 min after end-of-match clamping).
-
-Raw goals and their differentials are kept on the row as secondary targets
-for sensitivity checks.
-
----
-
-## Repo Structure
+Each subdirectory has its own `README.md` with module-level detail.
 
 ```
 .
-├── archetypes/          Stage 1 — per-(player, season) archetype pipeline
-├── formations/          Stage 2 — lineup snapshot + match-state + archetype enrichment
-├── features/            Tabular and graph feature builders (consume the snapshot table)
-├── models/              The 8 model variants (2 structures × 2 personnel × 2 opponent-inclusion)
-├── evaluation/          k-fold CV harness and metrics
-├── notebooks/           Project-level EDA
-├── configs/             config.yaml — paths, hyperparameters, k-fold k
-├── tests/               Unit tests
-└── data/                raw / processed (gitignored)
+├── archetypes/    Stage 1 — per-(player, season) archetype pipeline
+├── formations/    Stage 2 — joint-stable windows + match state + archetype enrichment
+├── features/      Filter (snapshots.py), graph builder (build_graphs.py), and PyG Dataset (dataset.py)
+├── graphs/        Topology primitives: formation templates, matchup edges, alignment, visualization
+├── models/        4 tabular XGBoost variants + LineupGNN (4 variants) + comparison helpers
+├── scripts/       CLIs: build_train_test_split, train_gnn, predict_gnn  (gitignored — see below)
+├── configs/       config.yaml — paths + clustering hyperparameters
+├── tests/         pytest suite (graph builder, dataset, matchup edges)
+└── data/          raw/, processed/, team_seasons/  (gitignored)
 ```
 
-Each subpackage has a `notebooks/` directory for stage-local diagnostics
-(event-cluster inspection, archetype profiles, snapshot QA, results tables).
+> The whole `scripts/` directory is in `.gitignore`. Remove that line if
+> you want the CLI scripts under version control.
 
 ---
 
@@ -171,9 +76,9 @@ Each subpackage has a `notebooks/` directory for stage-local diagnostics
 
 Requires Python 3.11+.
 
-```bash
+```powershell
 python -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
+.venv\Scripts\activate            # or: source .venv/bin/activate on Unix
 pip install -r requirements.txt
 ```
 
@@ -182,76 +87,78 @@ PyTorch Geometric occasionally needs platform-specific wheels — see the
 if `pip install torch-geometric` fails.
 
 Drop the raw Wyscout exports into `data/raw/` (`all_events.parquet`,
-`matches.parquet`, `seasons.parquet`, `formations.parquet`, …). That directory
-is gitignored; only a `.gitkeep` is tracked.
+`matches.parquet`, `seasons.parquet`, `formations.parquet`, `leagues.parquet`,
+`team_info.parquet`, `player_info.parquet`). That directory is gitignored.
 
 ---
 
-## Running the Pipelines
+## End-to-end pipeline
 
-End-to-end build, in order:
+```powershell
+# 1. Player archetypes (~10 min, one-time per dataset)
+python -m archetypes.run_pipeline
+# -> data/processed/archetype_artifacts/player_archetype_map.parquet
 
-```bash
-python -m archetypes.run_pipeline    # Stage 1: writes player_archetype_map.parquet
-python -m formations.run             # Stage 2: writes lineup_snapshots.parquet
+# 2. Lineup snapshots + match state + archetype join
+python -m formations.run
+# -> data/processed/lineup_snapshots.parquet  (~79.8k focal rows)
+
+# 3. Match-blocked 80/20 train/test split
+python -m scripts.build_train_test_split
+# -> data/processed/{train,test}_snapshots.parquet  (~59.1k / ~14.5k)
+
+# 4. Train the 4 GNN variants (~20 min each for single, ~50 min for paired)
+python -m scripts.train_gnn --kind position  --mode single --epochs 30
+python -m scripts.train_gnn --kind archetype --mode single --epochs 30
+python -m scripts.train_gnn --kind position  --mode paired --epochs 30
+python -m scripts.train_gnn --kind archetype --mode paired --epochs 30
+# -> artifacts/gnn_<kind>_<mode>/ : log.jsonl, checkpoint.pt, val_preds.parquet, summary.json
 ```
 
-Stage 2 reads the artifact written by Stage 1, so the order matters.
-
-The lineup-snapshot table at `data/processed/lineup_snapshots.parquet` is the
-**base training dataframe** for all 8 models.
-
----
-
-## Running the Models
-
-Each of the eight model variants exposes `fit` / `predict` and is compatible
-with the shared CV harness in `evaluation/cross_validate.py`.
-
-| Model | Module |
-|-------|--------|
-| 1 — Tabular · Raw positions · ego        | `models.tab_pos_ego` |
-| 2 — Tabular · Raw positions · matchup    | `models.tab_pos_matchup` |
-| 3 — Tabular · Archetypes · ego           | `models.tab_arch_ego` |
-| 4 — Tabular · Archetypes · matchup       | `models.tab_arch_matchup` |
-| 5 — Graph · Raw positions · ego          | `models.gnn_pos_ego` |
-| 6 — Graph · Raw positions · matchup      | `models.gnn_pos_matchup` |
-| 7 — Graph · Archetypes · ego             | `models.gnn_arch_ego` |
-| 8 — Graph · Archetypes · matchup         | `models.gnn_arch_matchup` |
-
-Tabular models consume `features.build_tabular`; GNN models consume
-`features.build_graphs`. Each feature builder accepts:
-
-- `personnel={"position", "archetype"}` — which columns to encode
-- `include_opponent={False, True}` — whether to emit features for both teams
-  or only the focal team
-
-so the eight variants share machinery.
+Tabular models are evaluated inside the comparison notebook; there's no
+separate training script (XGBoost converges in a single fit, no
+intermediate checkpoints to save).
 
 ---
 
 ## Evaluation
 
-`evaluation/cross_validate.py` runs k-fold CV over snapshots for any model,
-regardless of whether it consumes tabular rows or PyG graphs. To prevent
-leakage, folds are blocked by `match_id` so windows from the same match never
-straddle train/test.
+Both pipelines train on the same `train_snapshots.parquet` and report
+metrics on the same `test_snapshots.parquet`. The shared filter
+[`features.snapshots.filter_buildable_snapshots`](features/snapshots.py)
+runs *before* the split so both model classes consume identical rows
+(both formations in [`graphs.templates.FORMATION_TEMPLATES`](graphs/templates.py)
+and all 22 position labels non-null). NaN archetypes are kept in both
+pipelines: XGBoost encodes them as the `"MISSING"` category and the GNN's
+archetype vocab includes a `"MISSING"` token.
 
-Primary metric: MAE on `xg_home_minus_away_per_30`. Secondary: RMSE, R²,
-sign-accuracy (did the model get the dominance direction right?). All defined
-in `evaluation/metrics.py`. The final 8-way comparison table is assembled in
-`evaluation/notebooks/results.ipynb`.
+Open [`models/notebooks/all_models_comparison.ipynb`](models/notebooks/all_models_comparison.ipynb)
+to render:
 
-k-fold `k` and the random seed live in `configs/config.yaml`.
+- A unified summary table over all 8 models
+- A metric bar chart (MAE / RMSE / R² / sign acc)
+- 2 × 4 predictions-vs-targets scatter (tabular row vs GNN row)
+- 2 × 4 residual histograms
+- Pairwise ablation deltas on the three design axes
+
+For GNN-specific training diagnostics (loss curves, gradient norms,
+calibration plots) see
+[`models/notebooks/gnn_training.ipynb`](models/notebooks/gnn_training.ipynb).
+
+Primary metric: MAE on `xg_team1_minus_team2_per_30`. Secondary: RMSE,
+R², sign accuracy (did the model identify the dominating team?).
+
+Caveat: the GNN saves the best-test-MSE checkpoint, so it gets a mild
+advantage versus the single-fit tabular model. Easy fix later by adding
+a small inner validation slice carved out of `train_snapshots.parquet`.
 
 ---
 
 ## Tests
 
-```bash
-pytest
+```powershell
+pytest tests/
 ```
 
-Tests live in `tests/` and cover the position-group mapping, event
-clustering, snapshot joint-interval logic, slot-number assignment, and metric
-functions.
+The dataset-level tests require `data/processed/lineup_snapshots.parquet`;
+they skip cleanly when missing.
