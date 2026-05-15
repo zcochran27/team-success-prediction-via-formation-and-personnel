@@ -2,3 +2,14 @@ train rows: 59,096  |  test rows: 14,538
 training kind=position mode=single -> writing to artifacts\gnn_position_single/
 epoch   1 | train MSE 1.02832 | val MSE 0.96952 | MAE 0.5514 | r +0.053 | sign 0.430 | grad 0.148 | 94.6s  *
 epoch   2 | train MSE 1.02672 | val MSE 0.97053 | MAE 0.5507 | r +0.061 | sign 0.441 | grad 0.140 | 159.2s
+epoch   3 | train MSE 1.02663 | val MSE 0.96902 | MAE 0.5592 | r +0.059 | sign 0.438 | grad 0.132 | 169.5s  *
+epoch   4 | train MSE 1.02577 | val MSE 0.96969 | MAE 0.5610 | r +0.062 | sign 0.436 | grad 0.151 | 156.1s
+epoch   5 | train MSE 1.02540 | val MSE 0.96740 | MAE 0.5532 | r +0.068 | sign 0.440 | grad 0.152 | 94.5s  *
+epoch   6 | train MSE 1.02546 | val MSE 0.96720 | MAE 0.5529 | r +0.071 | sign 0.441 | grad 0.141 | 62.1s  *
+epoch   7 | train MSE 1.02520 | val MSE 0.96737 | MAE 0.5557 | r +0.067 | sign 0.431 | grad 0.150 | 58.0s
+epoch   8 | train MSE 1.02535 | val MSE 0.96671 | MAE 0.5530 | r +0.073 | sign 0.439 | grad 0.152 | 57.6s  *
+epoch   9 | train MSE 1.02502 | val MSE 0.96694 | MAE 0.5533 | r +0.071 | sign 0.439 | grad 0.153 | 57.9s
+epoch  10 | train MSE 1.02525 | val MSE 0.96817 | MAE 0.5516 | r +0.070 | sign 0.443 | grad 0.161 | 58.3s
+epoch  11 | train MSE 1.02547 | val MSE 0.96740 | MAE 0.5533 | r +0.067 | sign 0.441 | grad 0.150 | 59.7s
+epoch  12 | train MSE 1.02555 | val MSE 0.96796 | MAE 0.5519 | r +0.067 | sign 0.440 | grad 0.150 | 55.3s
+epoch  13 | train MSE 1.02503 | val MSE 0.96684 | MAE 0.5550 | r +0.070 | sign 0.439 | grad 0.156 | 56.6s
