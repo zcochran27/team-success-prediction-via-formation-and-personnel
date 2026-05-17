@@ -29,12 +29,22 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
+import numpy as np
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
 from torch_geometric.data import Batch, Data
 
-from features.build_graphs import MISSING_ARCHETYPE, PlayerFeatureKind, build_snapshot_graph
+from archetypes.season_stats import STAT_COLS
+from features.build_graphs import (
+    DEFAULT_MATCHUP_RADIUS,
+    MISSING_ARCHETYPE,
+    STAT_DIM,
+    InterTopology,
+    IntraTopology,
+    PlayerFeatureKind,
+    build_snapshot_graph,
+)
 from features.snapshots import filter_buildable_snapshots
 from graphs.alignment import aligned, align_lineup_to_template
 
@@ -50,6 +60,10 @@ _POS_COLS = {
 _ARCH_COLS = {
     "team1": tuple(f"team1_archetype_{i}" for i in range(1, 12)),
     "team2": tuple(f"team2_archetype_{i}" for i in range(1, 12)),
+}
+_PLAYER_COLS = {
+    "team1": tuple(f"team1_player_{i}" for i in range(1, 12)),
+    "team2": tuple(f"team2_player_{i}" for i in range(1, 12)),
 }
 _FORMATION_COLS = {"team1": "team1_formation", "team2": "team2_formation"}
 
@@ -88,11 +102,19 @@ class LineupSnapshotDataset(Dataset):
         kind: PlayerFeatureKind,
         mode: GraphMode,
         target_col: str = "xg_team1_minus_team2_per_30",
+        stats_path: Path | str | None = None,
+        intra_topology: IntraTopology = "template",
+        inter_topology: InterTopology = "rule",
+        matchup_radius: float = DEFAULT_MATCHUP_RADIUS,
     ) -> None:
         if kind not in ("position", "archetype"):
             raise ValueError(f"unknown kind {kind!r}")
         if mode not in ("single", "paired"):
             raise ValueError(f"unknown mode {mode!r}")
+        if intra_topology not in ("template", "full"):
+            raise ValueError(f"unknown intra_topology {intra_topology!r}")
+        if inter_topology not in ("rule", "radial", "full"):
+            raise ValueError(f"unknown inter_topology {inter_topology!r}")
 
         df = pd.read_parquet(snapshots_path)
         if target_col not in df.columns:
@@ -105,14 +127,42 @@ class LineupSnapshotDataset(Dataset):
             list(_POS_COLS["team1"]) + list(_POS_COLS["team2"])
             + list(_ARCH_COLS["team1"]) + list(_ARCH_COLS["team2"])
         )
+        player_cols = list(_PLAYER_COLS["team1"]) + list(_PLAYER_COLS["team2"])
+        # 'season' is needed to look up per-season stats; keep it even when
+        # stats aren't in use so the dataset behaves identically regardless of
+        # stats_path being set.
         cols_to_keep = (
-            [_FORMATION_COLS["team1"], _FORMATION_COLS["team2"], target_col]
-            + label_cols
+            [_FORMATION_COLS["team1"], _FORMATION_COLS["team2"], target_col, "season"]
+            + label_cols + player_cols
         )
-        self._df = df[cols_to_keep].reset_index(drop=True)
+        keep = [c for c in cols_to_keep if c in df.columns]
+        self._df = df[keep].reset_index(drop=True)
         self.kind: PlayerFeatureKind = kind
         self.mode: GraphMode = mode
         self.target_col = target_col
+        self.intra_topology: IntraTopology = intra_topology
+        self.inter_topology: InterTopology = inter_topology
+        self.matchup_radius: float = matchup_radius
+
+        # Optional per-(player_id, season) stats lookup. Missing keys resolve
+        # to all-zero vectors at lookup time (matches the project-wide 0-fill
+        # convention; see ``archetypes.season_stats``).
+        self._stats_lookup: dict[tuple[int, int], np.ndarray] | None = None
+        if stats_path is not None:
+            stats_df = pd.read_parquet(stats_path)
+            for c in STAT_COLS:
+                if c not in stats_df.columns:
+                    raise KeyError(f"stats parquet missing column {c!r}")
+            self._stats_lookup = {
+                (int(pid), int(season)): row[list(STAT_COLS)].astype(np.float32).to_numpy()
+                for (pid, season), row in stats_df.set_index(
+                    ["player_id", "season"]
+                ).iterrows()
+            }
+
+    @property
+    def use_stats(self) -> bool:
+        return self._stats_lookup is not None
 
     @property
     def frame(self) -> pd.DataFrame:
@@ -146,29 +196,58 @@ class LineupSnapshotDataset(Dataset):
         ]
         return aligned(arch_labels, perm), aligned_pos
 
+    def _aligned_stats(self, row: pd.Series, side: Side) -> torch.Tensor | None:
+        """Look up the 11 per-player stat vectors for ``side`` (aligned to template slots).
+
+        Returns a ``(11, STAT_DIM)`` float tensor, or ``None`` if the dataset
+        was constructed without ``stats_path``. Players missing from the
+        stats lookup (no events that season) get an all-zero vector --
+        matches the project's 0-fill convention.
+        """
+        if self._stats_lookup is None:
+            return None
+        formation = row[_FORMATION_COLS[side]]
+        position_labels = [row[c] for c in _POS_COLS[side]]
+        perm = align_lineup_to_template(formation, position_labels)
+        player_ids = [row[c] for c in _PLAYER_COLS[side]]
+        season = int(row["season"])
+        zero = np.zeros(STAT_DIM, dtype=np.float32)
+        per_slot = np.stack([
+            self._stats_lookup.get((int(player_ids[perm[k]]), season), zero)
+            for k in range(11)
+        ])
+        return torch.from_numpy(per_slot)
+
     def __getitem__(
         self, idx: int
     ) -> tuple[Data, Data, float] | tuple[Data, float]:
         row = self._df.iloc[idx]
         y = float(row[self.target_col])
         feat_t1, pos_t1 = self._aligned_labels(row, "team1")
+        stats_t1 = self._aligned_stats(row, "team1")
         if self.mode == "single":
             d1 = build_snapshot_graph(
                 mode="single",
                 kind=self.kind,
                 formation_team1=row[_FORMATION_COLS["team1"]],
                 slot_labels_team1=feat_t1,
+                stats_team1=stats_t1,
+                intra_topology=self.intra_topology,
             )
             feat_t2, _ = self._aligned_labels(row, "team2")
+            stats_t2 = self._aligned_stats(row, "team2")
             d2 = build_snapshot_graph(
                 mode="single",
                 kind=self.kind,
                 formation_team1=row[_FORMATION_COLS["team2"]],
                 slot_labels_team1=feat_t2,
+                stats_team1=stats_t2,
+                intra_topology=self.intra_topology,
             )
             return d1, d2, y
 
         feat_t2, pos_t2 = self._aligned_labels(row, "team2")
+        stats_t2 = self._aligned_stats(row, "team2")
         data = build_snapshot_graph(
             mode="paired",
             kind=self.kind,
@@ -178,6 +257,11 @@ class LineupSnapshotDataset(Dataset):
             slot_labels_team2=feat_t2,
             position_labels_team1=pos_t1,
             position_labels_team2=pos_t2,
+            stats_team1=stats_t1,
+            stats_team2=stats_t2,
+            intra_topology=self.intra_topology,
+            inter_topology=self.inter_topology,
+            matchup_radius=self.matchup_radius,
         )
         return data, y
 

@@ -1,0 +1,36 @@
+train rows: 59,096  |  test rows: 14,538
+training kind=archetype mode=paired use_coords=False -> writing to artifacts\gnn_archetype_paired/
+epoch   1 | train MSE 1.00908 | val MSE 0.94830 | MAE 0.5646 | r +0.158 | sign 0.581 | grad 0.308 | 84.8s  *
+epoch   2 | train MSE 0.99974 | val MSE 0.94753 | MAE 0.5540 | r +0.162 | sign 0.582 | grad 0.323 | 85.3s  *
+epoch   3 | train MSE 0.99425 | val MSE 0.94254 | MAE 0.5551 | r +0.173 | sign 0.580 | grad 0.342 | 85.2s  *
+epoch   4 | train MSE 0.98928 | val MSE 0.94292 | MAE 0.5599 | r +0.172 | sign 0.573 | grad 0.376 | 84.8s
+epoch   5 | train MSE 0.98431 | val MSE 0.94589 | MAE 0.5643 | r +0.170 | sign 0.575 | grad 0.415 | 85.0s
+epoch   6 | train MSE 0.98004 | val MSE 0.95052 | MAE 0.5703 | r +0.162 | sign 0.571 | grad 0.445 | 86.1s
+epoch   7 | train MSE 0.97655 | val MSE 0.94872 | MAE 0.5654 | r +0.161 | sign 0.576 | grad 0.491 | 87.2s
+epoch   8 | train MSE 0.97489 | val MSE 0.95493 | MAE 0.5764 | r +0.162 | sign 0.571 | grad 0.520 | 85.3s
+epoch   9 | train MSE 0.97085 | val MSE 0.94770 | MAE 0.5634 | r +0.161 | sign 0.576 | grad 0.576 | 85.5s
+epoch  10 | train MSE 0.96536 | val MSE 0.95686 | MAE 0.5771 | r +0.164 | sign 0.575 | grad 0.637 | 87.4s
+epoch  11 | train MSE 0.96035 | val MSE 0.96497 | MAE 0.5804 | r +0.149 | sign 0.568 | grad 0.704 | 85.5s
+epoch  12 | train MSE 0.95411 | val MSE 0.95930 | MAE 0.5729 | r +0.141 | sign 0.559 | grad 0.791 | 85.5s
+epoch  13 | train MSE 0.94769 | val MSE 0.95772 | MAE 0.5748 | r +0.148 | sign 0.561 | grad 0.871 | 87.2s
+epoch  14 | train MSE 0.93947 | val MSE 0.95498 | MAE 0.5735 | r +0.151 | sign 0.561 | grad 0.978 | 87.4s
+epoch  15 | train MSE 0.93547 | val MSE 0.96253 | MAE 0.5790 | r +0.136 | sign 0.552 | grad 1.057 | 85.8s
+epoch  16 | train MSE 0.92437 | val MSE 0.96089 | MAE 0.5777 | r +0.141 | sign 0.565 | grad 1.183 | 85.1s
+epoch  17 | train MSE 0.91558 | val MSE 0.96608 | MAE 0.5803 | r +0.135 | sign 0.558 | grad 1.281 | 85.5s
+epoch  18 | train MSE 0.91048 | val MSE 0.97386 | MAE 0.5874 | r +0.132 | sign 0.556 | grad 1.394 | 85.3s
+epoch  19 | train MSE 0.89722 | val MSE 0.97539 | MAE 0.5882 | r +0.128 | sign 0.560 | grad 1.483 | 85.3s
+epoch  20 | train MSE 0.88998 | val MSE 0.98205 | MAE 0.5928 | r +0.132 | sign 0.562 | grad 1.551 | 85.7s
+epoch  21 | train MSE 0.87225 | val MSE 0.97545 | MAE 0.5852 | r +0.121 | sign 0.562 | grad 1.635 | 85.6s
+epoch  22 | train MSE 0.86387 | val MSE 0.97648 | MAE 0.5827 | r +0.113 | sign 0.561 | grad 1.798 | 85.3s
+epoch  23 | train MSE 0.85869 | val MSE 0.96978 | MAE 0.5800 | r +0.123 | sign 0.566 | grad 1.885 | 85.2s
+epoch  24 | train MSE 0.83895 | val MSE 0.98995 | MAE 0.5979 | r +0.122 | sign 0.563 | grad 1.873 | 85.4s
+epoch  25 | train MSE 0.86430 | val MSE 0.96785 | MAE 0.5767 | r +0.122 | sign 0.562 | grad 2.159 | 84.9s
+epoch  26 | train MSE 0.86416 | val MSE 0.97170 | MAE 0.5798 | r +0.119 | sign 0.567 | grad 2.009 | 85.1s
+epoch  27 | train MSE 0.87338 | val MSE 0.98213 | MAE 0.5872 | r +0.115 | sign 0.565 | grad 2.123 | 85.3s
+epoch  28 | train MSE 0.84654 | val MSE 0.98622 | MAE 0.5938 | r +0.123 | sign 0.573 | grad 2.188 | 85.1s
+epoch  29 | train MSE 0.81914 | val MSE 0.99283 | MAE 0.6013 | r +0.125 | sign 0.573 | grad 2.110 | 85.8s
+epoch  30 | train MSE 0.81702 | val MSE 0.97581 | MAE 0.5884 | r +0.128 | sign 0.568 | grad 2.113 | 85.3s
+done. best val MSE 0.94254 at epoch 3
+checkpoint -> artifacts\gnn_archetype_paired\checkpoint.pt
+log        -> artifacts\gnn_archetype_paired\log.jsonl
+val preds  -> artifacts\gnn_archetype_paired\val_preds.parquet

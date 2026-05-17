@@ -1,0 +1,21 @@
+{
+  "kind": "position",
+  "mode": "paired",
+  "use_coords": true,
+  "hidden_dim": 64,
+  "num_layers": 2,
+  "dropout": 0.1,
+  "heads": 1,
+  "lr": 0.001,
+  "weight_decay": 0.0,
+  "batch_size": 64,
+  "epochs": 30,
+  "grad_clip": 0.0,
+  "seed": 0,
+  "target": "xg_team1_minus_team2_per_30",
+  "train_snapshots": "data\\processed\\train_snapshots.parquet",
+  "test_snapshots": "data\\processed\\test_snapshots.parquet",
+  "n_train": 59096,
+  "n_test": 14538,
+  "device": "cpu"
+}

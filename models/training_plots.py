@@ -31,21 +31,81 @@ MODEL_KEYS: tuple[str, ...] = (
     "archetype_single",
     "position_paired",
     "archetype_paired",
+    "position_single_coords",
+    "archetype_single_coords",
+    "position_paired_coords",
+    "archetype_paired_coords",
+    "position_single_stats",
+    "archetype_single_stats",
+    "position_paired_stats",
+    "archetype_paired_stats",
+    # Dense architecture (gnn_dense_*). xy is always on, attention pool.
+    "dense_position_single",
+    "dense_archetype_single",
+    "dense_position_paired",
+    "dense_archetype_paired",
+    "dense_position_single_stats",
+    "dense_archetype_single_stats",
+    "dense_position_paired_stats",
+    "dense_archetype_paired_stats",
 )
 
-# Stable palette so the same model gets the same color in every panel.
+# Stable palette: each (kind, mode) corner gets a hue family; base / +xy /
+# +stats variants share the family at progressively darker shades. Dense
+# variants get their own hue families per (kind, mode) corner so the new
+# architecture stays visually distinct from the template baseline.
 MODEL_COLORS: dict[str, str] = {
-    "position_single":  "#1f78b4",  # blue
-    "archetype_single": "#33a02c",  # green
-    "position_paired":  "#ff7f00",  # orange
-    "archetype_paired": "#e31a1c",  # red
+    # blues — position single
+    "position_single":         "#9ecae1",
+    "position_single_coords":  "#3182bd",
+    "position_single_stats":   "#08519c",
+    # greens — archetype single
+    "archetype_single":        "#a1d99b",
+    "archetype_single_coords": "#41ab5d",
+    "archetype_single_stats":  "#006d2c",
+    # oranges — position paired
+    "position_paired":         "#fdae6b",
+    "position_paired_coords":  "#e6550d",
+    "position_paired_stats":   "#a63603",
+    # reds — archetype paired
+    "archetype_paired":        "#fcae91",
+    "archetype_paired_coords": "#de2d26",
+    "archetype_paired_stats":  "#a50f15",
+    # purples — dense position single
+    "dense_position_single":         "#bcbddc",
+    "dense_position_single_stats":   "#54278f",
+    # teals — dense archetype single
+    "dense_archetype_single":        "#99d8c9",
+    "dense_archetype_single_stats":  "#005824",
+    # magentas — dense position paired
+    "dense_position_paired":         "#fcc5c0",
+    "dense_position_paired_stats":   "#7a0177",
+    # browns — dense archetype paired
+    "dense_archetype_paired":        "#dfc27d",
+    "dense_archetype_paired_stats":  "#543005",
 }
 
 PRETTY_LABEL: dict[str, str] = {
-    "position_single":  "position, single",
-    "archetype_single": "archetype, single",
-    "position_paired":  "position, paired",
-    "archetype_paired": "archetype, paired",
+    "position_single":         "position, single",
+    "archetype_single":        "archetype, single",
+    "position_paired":         "position, paired",
+    "archetype_paired":        "archetype, paired",
+    "position_single_coords":  "position, single + xy",
+    "archetype_single_coords": "archetype, single + xy",
+    "position_paired_coords":  "position, paired + xy",
+    "archetype_paired_coords": "archetype, paired + xy",
+    "position_single_stats":   "position, single + stats",
+    "archetype_single_stats":  "archetype, single + stats",
+    "position_paired_stats":   "position, paired + stats",
+    "archetype_paired_stats":  "archetype, paired + stats",
+    "dense_position_single":         "dense position, single",
+    "dense_archetype_single":        "dense archetype, single",
+    "dense_position_paired":         "dense position, paired",
+    "dense_archetype_paired":        "dense archetype, paired",
+    "dense_position_single_stats":   "dense position, single + stats",
+    "dense_archetype_single_stats":  "dense archetype, single + stats",
+    "dense_position_paired_stats":   "dense position, paired + stats",
+    "dense_archetype_paired_stats":  "dense archetype, paired + stats",
 }
 
 
@@ -97,10 +157,10 @@ def load_all_runs(
 
 def plot_loss_curves(
     runs: Mapping[str, Mapping[str, object]],
-    figsize: tuple[float, float] = (10, 7),
+    figsize: tuple[float, float] = (16, 18),
 ) -> Figure:
-    """2 x 2 grid of train vs val MSE curves, one panel per model."""
-    fig, axes = plt.subplots(2, 2, figsize=figsize, sharex=True)
+    """5 x 4 grid of train vs test MSE curves, one panel per GNN variant."""
+    fig, axes = plt.subplots(5, 4, figsize=figsize, sharex=True)
     for ax, key in zip(axes.flat, MODEL_KEYS):
         bundle = runs.get(key)
         if bundle is None:
@@ -124,7 +184,7 @@ def plot_loss_curves(
         ax.grid(alpha=0.3)
     for ax in axes[-1]:
         ax.set_xlabel("epoch")
-    fig.suptitle("Train / val MSE per model", y=1.005)
+    fig.suptitle("Train / test MSE per GNN variant", y=1.005)
     fig.tight_layout()
     return fig
 
@@ -185,10 +245,10 @@ def plot_metric_overlays(
 
 def plot_pred_vs_target_grid(
     runs: Mapping[str, Mapping[str, object]],
-    figsize: tuple[float, float] = (10, 9),
+    figsize: tuple[float, float] = (16, 20),
 ) -> Figure:
-    """2 x 2 scatter grid of best-epoch val predictions vs targets."""
-    fig, axes = plt.subplots(2, 2, figsize=figsize)
+    """5 x 4 scatter grid of best-epoch test predictions vs targets per GNN variant."""
+    fig, axes = plt.subplots(5, 4, figsize=figsize)
     for ax, key in zip(axes.flat, MODEL_KEYS):
         bundle = runs.get(key)
         if bundle is None or "val_preds" not in bundle:
@@ -213,11 +273,11 @@ def plot_pred_vs_target_grid(
 
 def plot_residual_hists(
     runs: Mapping[str, Mapping[str, object]],
-    figsize: tuple[float, float] = (10, 7),
+    figsize: tuple[float, float] = (16, 18),
     bins: int = 60,
 ) -> Figure:
-    """2 x 2 histograms of (pred - target) residuals at the best epoch."""
-    fig, axes = plt.subplots(2, 2, figsize=figsize, sharex=True)
+    """5 x 4 histograms of (pred - target) residuals at the best epoch per GNN variant."""
+    fig, axes = plt.subplots(5, 4, figsize=figsize, sharex=True)
     for ax, key in zip(axes.flat, MODEL_KEYS):
         bundle = runs.get(key)
         if bundle is None or "val_preds" not in bundle:

@@ -1,0 +1,8 @@
+{
+  "best_epoch": 3,
+  "best_val_mse": 0.94254436798282,
+  "best_val_mae": 0.5551110506057739,
+  "best_val_r2": 0.029913127422332764,
+  "best_val_pearson": 0.17347407341003418,
+  "best_val_sign_acc": 0.5798050806838153
+}

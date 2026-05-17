@@ -1,0 +1,36 @@
+train rows: 59,096  |  test rows: 14,538
+training kind=position mode=single use_coords=True -> writing to artifacts\gnn_position_single_coords/
+epoch   1 | train MSE 1.02766 | val MSE 0.96806 | MAE 0.5513 | r +0.078 | sign 0.441 | grad 0.156 | 76.9s  *
+epoch   2 | train MSE 1.02588 | val MSE 0.96836 | MAE 0.5580 | r +0.060 | sign 0.438 | grad 0.127 | 76.6s
+epoch   3 | train MSE 1.02600 | val MSE 0.96790 | MAE 0.5518 | r +0.069 | sign 0.439 | grad 0.124 | 75.1s  *
+epoch   4 | train MSE 1.02543 | val MSE 0.96764 | MAE 0.5526 | r +0.066 | sign 0.443 | grad 0.121 | 75.0s  *
+epoch   5 | train MSE 1.02511 | val MSE 0.96860 | MAE 0.5530 | r +0.059 | sign 0.443 | grad 0.124 | 75.4s
+epoch   6 | train MSE 1.02510 | val MSE 0.96654 | MAE 0.5529 | r +0.074 | sign 0.438 | grad 0.127 | 75.3s  *
+epoch   7 | train MSE 1.02525 | val MSE 0.96729 | MAE 0.5518 | r +0.072 | sign 0.437 | grad 0.118 | 75.3s
+epoch   8 | train MSE 1.02490 | val MSE 0.96627 | MAE 0.5552 | r +0.074 | sign 0.439 | grad 0.123 | 75.2s  *
+epoch   9 | train MSE 1.02507 | val MSE 0.96692 | MAE 0.5529 | r +0.073 | sign 0.444 | grad 0.126 | 75.3s
+epoch  10 | train MSE 1.02505 | val MSE 0.96773 | MAE 0.5538 | r +0.063 | sign 0.439 | grad 0.120 | 75.7s
+epoch  11 | train MSE 1.02509 | val MSE 0.96766 | MAE 0.5536 | r +0.064 | sign 0.446 | grad 0.114 | 75.2s
+epoch  12 | train MSE 1.02506 | val MSE 0.96710 | MAE 0.5542 | r +0.068 | sign 0.447 | grad 0.116 | 75.3s
+epoch  13 | train MSE 1.02486 | val MSE 0.96752 | MAE 0.5547 | r +0.065 | sign 0.442 | grad 0.123 | 75.2s
+epoch  14 | train MSE 1.02508 | val MSE 0.96773 | MAE 0.5540 | r +0.063 | sign 0.443 | grad 0.121 | 75.1s
+epoch  15 | train MSE 1.02506 | val MSE 0.96761 | MAE 0.5521 | r +0.070 | sign 0.436 | grad 0.121 | 75.5s
+epoch  16 | train MSE 1.02499 | val MSE 0.96762 | MAE 0.5530 | r +0.066 | sign 0.439 | grad 0.119 | 75.1s
+epoch  17 | train MSE 1.02487 | val MSE 0.96736 | MAE 0.5529 | r +0.069 | sign 0.444 | grad 0.112 | 77.6s
+epoch  18 | train MSE 1.02501 | val MSE 0.96730 | MAE 0.5543 | r +0.067 | sign 0.443 | grad 0.120 | 75.4s
+epoch  19 | train MSE 1.02477 | val MSE 0.96735 | MAE 0.5520 | r +0.071 | sign 0.444 | grad 0.119 | 75.6s
+epoch  20 | train MSE 1.02497 | val MSE 0.96727 | MAE 0.5521 | r +0.073 | sign 0.438 | grad 0.120 | 76.1s
+epoch  21 | train MSE 1.02477 | val MSE 0.96805 | MAE 0.5548 | r +0.061 | sign 0.443 | grad 0.114 | 76.0s
+epoch  22 | train MSE 1.02470 | val MSE 0.96734 | MAE 0.5528 | r +0.069 | sign 0.445 | grad 0.110 | 78.3s
+epoch  23 | train MSE 1.02478 | val MSE 0.96747 | MAE 0.5534 | r +0.066 | sign 0.438 | grad 0.112 | 75.5s
+epoch  24 | train MSE 1.02491 | val MSE 0.96768 | MAE 0.5538 | r +0.064 | sign 0.443 | grad 0.116 | 75.7s
+epoch  25 | train MSE 1.02474 | val MSE 0.96735 | MAE 0.5531 | r +0.068 | sign 0.443 | grad 0.106 | 75.8s
+epoch  26 | train MSE 1.02473 | val MSE 0.96715 | MAE 0.5531 | r +0.070 | sign 0.438 | grad 0.106 | 75.7s
+epoch  27 | train MSE 1.02469 | val MSE 0.96782 | MAE 0.5545 | r +0.063 | sign 0.446 | grad 0.105 | 75.8s
+epoch  28 | train MSE 1.02460 | val MSE 0.96744 | MAE 0.5531 | r +0.068 | sign 0.445 | grad 0.107 | 75.3s
+epoch  29 | train MSE 1.02459 | val MSE 0.96713 | MAE 0.5537 | r +0.068 | sign 0.438 | grad 0.107 | 75.2s
+epoch  30 | train MSE 1.02465 | val MSE 0.96727 | MAE 0.5547 | r +0.067 | sign 0.440 | grad 0.112 | 75.2s
+done. best val MSE 0.96627 at epoch 8
+checkpoint -> artifacts\gnn_position_single_coords\checkpoint.pt
+log        -> artifacts\gnn_position_single_coords\log.jsonl
+val preds  -> artifacts\gnn_position_single_coords\val_preds.parquet
