@@ -1,5 +1,5 @@
 {
-  "kind": "position",
+  "kind": "archetype",
   "mode": "paired",
   "use_coords": true,
   "use_stats": true,
@@ -8,7 +8,7 @@
   "inter_topology": "full",
   "matchup_radius": 0.35,
   "pool": "attention",
-  "conv": "gat",
+  "conv": "transformer",
   "hidden_dim": 64,
   "num_layers": 2,
   "dropout": 0.1,
