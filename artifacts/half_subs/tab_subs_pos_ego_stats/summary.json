@@ -1,0 +1,15 @@
+{
+  "model": "tab_subs_pos_ego_stats",
+  "features": "starters+subs (labels, durations, sub timing, optional stats)",
+  "kind": "pos",
+  "opponent": "ego",
+  "use_stats": true,
+  "n_features": 277,
+  "mae": 0.3506608219298558,
+  "rmse": 0.47333918977173406,
+  "r2": 0.1409895277026686,
+  "sign_acc": 0.6028183716075156,
+  "n_train": 15362,
+  "n_test": 3832,
+  "target": "xg_team1_minus_team2_per_30"
+}

@@ -1,0 +1,11 @@
+{
+  "model": "tab_pos_matchup_stats",
+  "mae": 0.3299498943345562,
+  "rmse": 0.4427345595294932,
+  "r2": 0.24848028124924415,
+  "sign_acc": 0.6456158663883089,
+  "n_train": 15362,
+  "n_test": 3832,
+  "target": "xg_team1_minus_team2_per_30",
+  "features": "starter-only (sub slots ignored by the standard tab modules)"
+}

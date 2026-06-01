@@ -1,0 +1,15 @@
+{
+  "model": "tab_subs_arch_matchup_stats",
+  "features": "starters+subs (labels, durations, sub timing, optional stats)",
+  "kind": "arch",
+  "opponent": "matchup",
+  "use_stats": true,
+  "n_features": 553,
+  "mae": 0.3246384560269913,
+  "rmse": 0.44151950824256386,
+  "r2": 0.25259959819459066,
+  "sign_acc": 0.6466597077244259,
+  "n_train": 15362,
+  "n_test": 3832,
+  "target": "xg_team1_minus_team2_per_30"
+}

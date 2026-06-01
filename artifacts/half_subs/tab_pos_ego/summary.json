@@ -1,0 +1,11 @@
+{
+  "model": "tab_pos_ego",
+  "mae": 0.36184894619833735,
+  "rmse": 0.5008790013737289,
+  "r2": 0.038123793086626834,
+  "sign_acc": 0.5785490605427975,
+  "n_train": 15362,
+  "n_test": 3832,
+  "target": "xg_team1_minus_team2_per_30",
+  "features": "starter-only (sub slots ignored by the standard tab modules)"
+}

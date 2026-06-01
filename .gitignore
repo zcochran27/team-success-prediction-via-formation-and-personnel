@@ -31,3 +31,8 @@ Thumbs.db
 
 scripts/
 test.ipynb
+
+# Archived prior-iteration models, datasets, and artifacts. Preserved on
+# disk for reference but not tracked. The repo now focuses on the
+# per-half + substitution-aware pipeline (see PROJECT_DESCRIPTION.md).
+legacy/

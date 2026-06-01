@@ -1,0 +1,11 @@
+{
+  "model": "tab_arch_ego",
+  "mae": 0.3688607826264965,
+  "rmse": 0.5017391031977358,
+  "r2": 0.0348175183131717,
+  "sign_acc": 0.5788100208768268,
+  "n_train": 15362,
+  "n_test": 3832,
+  "target": "xg_team1_minus_team2_per_30",
+  "features": "starter-only (sub slots ignored by the standard tab modules)"
+}

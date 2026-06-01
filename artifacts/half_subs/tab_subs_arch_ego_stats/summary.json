@@ -1,0 +1,15 @@
+{
+  "model": "tab_subs_arch_ego_stats",
+  "features": "starters+subs (labels, durations, sub timing, optional stats)",
+  "kind": "arch",
+  "opponent": "ego",
+  "use_stats": true,
+  "n_features": 277,
+  "mae": 0.3538109952847936,
+  "rmse": 0.4793428882310768,
+  "r2": 0.11906044835985419,
+  "sign_acc": 0.5973382045929019,
+  "n_train": 15362,
+  "n_test": 3832,
+  "target": "xg_team1_minus_team2_per_30"
+}
