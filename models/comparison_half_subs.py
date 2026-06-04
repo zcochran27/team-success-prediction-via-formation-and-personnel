@@ -222,6 +222,100 @@ def load_runs(artifacts_root: Path = _HALF_SUBS_ROOT) -> dict[str, ModelRun]:
 # Summary table + plots                                                       #
 # --------------------------------------------------------------------------- #
 
+_AXIS_PAIRS: dict[str, tuple[str, str, str]] = {
+    # axis -> (column, "better" value, "worse" value). Delta is computed as
+    # better - worse, then signs are flipped on error metrics so that
+    # positive always means improvement.
+    "kind":      ("kind",      "archetype", "position"),
+    "use_stats": ("use_stats", True,        False),
+    "opponent":  ("opponent",  "matchup",   "ego"),
+    "family":    ("family",    "gnn_subs",  "tab_subs"),
+}
+
+_AXIS_LABEL: dict[str, str] = {
+    "kind":      "archetype - position",
+    "use_stats": "stats - no_stats",
+    "opponent":  "matchup - ego",
+    "family":    "gnn - tab",
+}
+
+_LOWER_IS_BETTER: frozenset[str] = frozenset({"MAE", "RMSE", "MSE"})
+
+
+def ablation_delta(
+    summary: pd.DataFrame,
+    axis: str,
+    metrics: Sequence[str] = ("MSE", "R²", "sign acc"),
+    normalize_signs: bool = True,
+) -> pd.DataFrame:
+    """Marginal contribution of one design axis.
+
+    ``axis`` selects the dimension to ablate:
+
+      * ``"kind"``       -- archetype vs position
+      * ``"use_stats"``  -- stats vs no-stats
+      * ``"opponent"``   -- matchup vs ego
+      * ``"family"``     -- gnn_subs vs tab_subs
+
+    Returns one row per cell of the remaining (other-axis) grid. Each
+    entry is ``(<hi value> - <lo value>)`` for the corresponding axis
+    pair (archetype-position, stats-no_stats, matchup-ego, gnn-tab).
+
+    If ``normalize_signs=True`` (default), signs on lower-is-better
+    metrics (MAE, RMSE, MSE) are flipped so a positive value always
+    means "the better-named setting helped". With ``normalize_signs=
+    False`` the table is the raw delta: for error metrics, negative
+    means the named choice lowered the error (good); for R^2 / sign
+    acc, positive means the named choice raised the metric (good).
+    """
+    if axis not in _AXIS_PAIRS:
+        raise ValueError(f"axis must be one of {sorted(_AXIS_PAIRS)}; got {axis!r}")
+    col, hi, lo = _AXIS_PAIRS[axis]
+    other_axes = [c for c in ("family", "kind", "opponent", "use_stats") if c != col]
+
+    a = summary[summary[col] == hi].set_index(other_axes)[list(metrics)]
+    b = summary[summary[col] == lo].set_index(other_axes)[list(metrics)]
+    # Align on the shared (other-axes) grid; rows that don't pair up are dropped.
+    a, b = a.align(b, join="inner", axis=0)
+    delta = a - b
+    if normalize_signs:
+        for m in delta.columns:
+            if m in _LOWER_IS_BETTER:
+                delta[m] = -delta[m]
+    return delta.sort_index()
+
+
+def ablation_summary(
+    summary: pd.DataFrame,
+    axes: Sequence[str] = ("kind", "use_stats", "opponent", "family"),
+    metrics: Sequence[str] = ("MSE", "R²", "sign acc"),
+    normalize_signs: bool = True,
+) -> pd.DataFrame:
+    """Mean marginal improvement across every cell, one row per design axis.
+
+    One row per axis (``archetype - position``, ``stats - no_stats``,
+    ``matchup - ego``, ``gnn - tab``); columns are the metrics. Each
+    cell is the **mean
+    delta over the other-axis grid** of the per-axis
+    :func:`ablation_delta` table.
+
+    With ``normalize_signs=True`` (default), positive = the named
+    choice helped on average. With ``normalize_signs=False`` the raw
+    delta is returned: for error metrics (MAE/RMSE/MSE) negative means
+    improvement; for R^2 / sign acc, positive means improvement.
+
+    Useful as the one-line takeaway per design choice when the per-cell
+    table is too detailed.
+    """
+    rows = {
+        _AXIS_LABEL[ax]: ablation_delta(
+            summary, ax, metrics=metrics, normalize_signs=normalize_signs,
+        ).mean()
+        for ax in axes
+    }
+    return pd.DataFrame(rows).T
+
+
 def build_summary_table(runs: Mapping[str, ModelRun]) -> pd.DataFrame:
     """One row per run, sorted by MSE (lower-is-better). MSE is RMSE²."""
     rows: list[dict[str, Any]] = []

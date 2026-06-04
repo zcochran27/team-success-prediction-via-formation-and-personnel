@@ -1,40 +1,31 @@
-"""Model implementations for the 2 x 2 x 2 experimental matrix.
+"""Model implementations for the half-with-subs pipeline.
 
-Tabular variants (XGBoost over the focal-perspective snapshot table at
-``data/processed/lineup_snapshots.parquet``):
+Three families are trained on
+``data/processed/{train,test}_snapshots_half_subs.parquet`` and live
+side-by-side under ``artifacts/half_subs/``:
 
-  * Model 1 -- :mod:`models.tab_pos_ego`        (raw position, focal-only)
-  * Model 2 -- :mod:`models.tab_pos_matchup`    (raw position, +opponent)
-  * Model 3 -- :mod:`models.tab_arch_ego`       (archetypes, focal-only)
-  * Model 4 -- :mod:`models.tab_arch_matchup`   (archetypes, +opponent)
+* **tab** — XGBoost on the 8 starter-only feature configurations
+  (position vs archetype × ego vs matchup × ±stats). The training entry
+  points are in ``scripts.train_tab_*``; this package only carries the
+  cross-model comparison helpers.
+* **tab_subs** — XGBoost on the same 8 axes but with all 11 sub slots
+  (position/archetype/start_min/duration/stats) joined into the feature
+  matrix. Trained by ``scripts.train_tab_subs_*``.
+* **gnn_subs** — :class:`~models.gnn_subs.HalfSubsGNN`, a typed-edge GAT
+  with fully-connected intra-team edges, sub-edge message passing, and
+  time-overlap matchup edges (paired mode only). Trained by
+  ``scripts.train_gnn_subs``.
 
-Each of the four tabular variants has a ``+stats`` companion that
-appends the per-(player, season) 10-D behavioral vector (see
-:mod:`archetypes.season_stats`) to every player slot:
+Cross-model helpers:
 
-  * :mod:`models.tab_pos_ego_stats`
-  * :mod:`models.tab_pos_matchup_stats`
-  * :mod:`models.tab_arch_ego_stats`
-  * :mod:`models.tab_arch_matchup_stats`
+* :mod:`models.comparison_half_subs` — loader + leaderboard + plots over
+  every ``artifacts/half_subs/*`` run, used by
+  ``notebooks/all_models_comparison.ipynb``.
+* :mod:`models.training_diagnostics` — per-epoch curves + best-epoch
+  table from the GNN ``log.jsonl`` files, used by
+  ``notebooks/training_diagnostics.ipynb``.
 
-The shared join lives in :mod:`models._tabular_stats`; the column block
-is ``team{side}_p{slot}_<stat>`` -- 110 columns for ego variants, 220
-for matchup variants.
-
-Graph variants are all served by the single :mod:`models.gnn` module
-via :class:`~models.gnn.LineupGNN`, configured at construction time:
-
-  * ``LineupGNN(kind="position",  mode="single")``  -- pos · ego
-  * ``LineupGNN(kind="archetype", mode="single")``  -- arch · ego
-  * ``LineupGNN(kind="position",  mode="paired")``  -- pos · matchup
-  * ``LineupGNN(kind="archetype", mode="paired")``  -- arch · matchup
-
-Each of the four graph variants additionally supports ``use_coords``
-(template ``(x, y)`` node + edge features) and ``use_stats`` (the same
-10-D behavioral vector mixed into the node embedding and 4 stat-diff
-edge features) flags -- yielding the 12 graph variants tracked by
-:mod:`models.comparison`.
-
-Head-to-head plotting + summary tables live in :mod:`models.comparison`;
-GNN-specific training plots live in :mod:`models.training_plots`.
+Earlier-iteration modules (joint-window snapshots, the original
+``LineupGNN``, separate ``tab_*.py`` modules) were moved to ``legacy/``
+when the repo refocused on this pipeline.
 """

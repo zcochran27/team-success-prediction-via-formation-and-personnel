@@ -1,11 +1,13 @@
 # graphs/notebooks/
 
-Visualization notebooks for the formation-template graphs and the
-paired matchup graphs. Both notebooks call helpers from
-[`../visualize.py`](../visualize.py) so the rendering logic stays in a
-reusable module.
+Visualization notebooks for the half-with-subs graph builder. Drawing
+helpers live in [`../visualize_half_subs.py`](../visualize_half_subs.py)
+so the notebooks stay thin -- they load a row, build, and render.
 
 | Notebook | Inspects |
 |---|---|
-| [formation_graphs.ipynb](formation_graphs.ipynb) | The single-team formation templates from [`../templates.py`](../templates.py). Shows the 17-rule edge set rendered on a pitch for each formation in `FORMATION_TEMPLATES`. |
-| [paired_snapshot_graphs.ipynb](paired_snapshot_graphs.ipynb) | The 22-node paired graph used by the matchup-mode GNN ([`features.build_graphs.build_snapshot_graph`](../../features/build_graphs.py) with `mode="paired"`). Hand-picked snapshots from `data/processed/lineup_snapshots.parquet` — Team 1 (blue) at template coords, Team 2 (red) rotated 180° about the pitch center, intra-team edges per team color, inter-team matchup edges in orange. |
+| [half_subs_graph_demo.ipynb](half_subs_graph_demo.ipynb) | One real row from [`data/processed/lineup_snapshots_half_subs.parquet`](../../data/processed/) → [`features.build_graphs_subs.build_half_subs_graph`](../../features/build_graphs_subs.py). Prints the node + edge tables, then renders both single-team graphs side by side and the joint paired graph with matchup edges weighted by on-pitch time overlap. |
+
+Older notebooks describing the prior (joint-window snapshot) builder
+were moved to [`../../legacy/graphs/notebooks/`](../../legacy/graphs/notebooks/)
+when the repo refocused on the half-with-subs pipeline.
