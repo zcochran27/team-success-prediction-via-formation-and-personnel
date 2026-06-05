@@ -1,18 +1,14 @@
 """Training diagnostics for the 8 HalfSubsGNN runs.
 
-Each call to ``scripts.train_gnn_subs`` writes one ``log.jsonl`` next to
-the run's ``summary.json``. Each line is one epoch with::
+Each call to the GNN training script writes one log.jsonl next to the run's
+summary.json. Each line is one epoch with keys: epoch, train_mse, val_mse,
+val_mae, val_rmse, val_r2, val_pearson, val_spearman, val_sign_acc,
+mean_grad_norm, lr, epoch_seconds, improved.
 
-    {"epoch", "train_mse", "val_mse", "val_mae", "val_rmse",
-     "val_r2", "val_pearson", "val_spearman", "val_sign_acc",
-     "mean_grad_norm", "lr", "epoch_seconds", "improved"}
-
-This module loads those logs and produces the diagnostic plots the
-training-diagnostics notebook renders.
-
-Tabular runs (``tab_*`` / ``tab_subs_*``) write only ``summary.json``
-plus a ``test_preds.parquet`` -- no per-iteration log -- so per-epoch
-curves only exist for the 8 GNN variants.
+This module loads those logs and produces the plots the training-diagnostics
+notebook renders. Tabular runs (tab_*, tab_subs_*) write only summary.json
+and a test_preds.parquet, no per-epoch log, so per-epoch curves only exist
+for the 8 GNN variants.
 """
 
 from __future__ import annotations
@@ -30,9 +26,7 @@ from matplotlib.figure import Figure
 _HALF_SUBS_ROOT = Path("artifacts/half_subs")
 
 
-# --------------------------------------------------------------------------- #
-# Loading                                                                     #
-# --------------------------------------------------------------------------- #
+# Loading
 
 def load_run_log(run_dir: Path) -> pd.DataFrame:
     """Return one DataFrame with one row per epoch."""
@@ -41,7 +35,7 @@ def load_run_log(run_dir: Path) -> pd.DataFrame:
 
 
 def load_all_logs(artifacts_root: Path = _HALF_SUBS_ROOT) -> dict[str, pd.DataFrame]:
-    """Return ``{run_name: per-epoch DataFrame}`` for every ``gnn_subs_*`` run."""
+    """Return {run_name: per-epoch DataFrame} for every gnn_subs_* run."""
     out: dict[str, pd.DataFrame] = {}
     for d in sorted(artifacts_root.glob("gnn_subs_*")):
         if (d / "log.jsonl").exists():
@@ -50,7 +44,7 @@ def load_all_logs(artifacts_root: Path = _HALF_SUBS_ROOT) -> dict[str, pd.DataFr
 
 
 def _short_label(run_name: str) -> str:
-    """``gnn_subs_archetype_paired_coords_stats`` -> ``arch · paired · stats``."""
+    """gnn_subs_archetype_paired_coords_stats -> arch · paired · stats."""
     rest = run_name[len("gnn_subs_"):]
     parts = rest.split("_")
     kind = "arch" if parts[0] == "archetype" else "pos"
@@ -61,7 +55,7 @@ def _short_label(run_name: str) -> str:
 
 
 def _style(run_name: str) -> dict:
-    """Color by kind, linestyle by mode, alpha by stats — so the legend reads
+    """Color by kind, linestyle by mode, alpha by stats - so the legend reads
     as a 2x2x2 grid rather than 8 arbitrary lines."""
     rest = run_name[len("gnn_subs_"):]
     parts = rest.split("_")
@@ -74,9 +68,7 @@ def _style(run_name: str) -> dict:
             "linewidth": 1.6 if has_stats else 1.1}
 
 
-# --------------------------------------------------------------------------- #
-# Plots                                                                       #
-# --------------------------------------------------------------------------- #
+# Plots
 
 def plot_loss_curves(
     logs: Mapping[str, pd.DataFrame],
@@ -95,7 +87,7 @@ def plot_loss_curves(
                         edgecolor="black", s=42, zorder=5)
     axes[0].set_title("Train MSE per epoch"); axes[0].set_xlabel("epoch")
     axes[0].set_ylabel("train MSE"); axes[0].grid(alpha=0.3)
-    axes[1].set_title("Val MSE per epoch — black-rim dot = best epoch")
+    axes[1].set_title("Val MSE per epoch - black-rim dot = best epoch")
     axes[1].set_xlabel("epoch"); axes[1].set_ylabel("val MSE"); axes[1].grid(alpha=0.3)
     axes[1].legend(fontsize=7, loc="upper right", ncol=2)
     fig.tight_layout()
@@ -136,7 +128,7 @@ def plot_grad_norms(
     logs: Mapping[str, pd.DataFrame],
     figsize: tuple[float, float] = (8, 4.2),
 ) -> Figure:
-    """Mean-gradient-norm trajectory — flags exploding / vanishing dynamics."""
+    """Mean-gradient-norm trajectory - flags exploding / vanishing dynamics."""
     fig, ax = plt.subplots(figsize=figsize)
     for run_name, df in logs.items():
         if "mean_grad_norm" not in df.columns:
@@ -154,7 +146,7 @@ def plot_epoch_timing(
     logs: Mapping[str, pd.DataFrame],
     figsize: tuple[float, float] = (8, 4.2),
 ) -> Figure:
-    """Wall-clock seconds per epoch — flags machine contention / GPU thrash."""
+    """Wall-clock seconds per epoch - flags machine contention / GPU thrash."""
     fig, ax = plt.subplots(figsize=figsize)
     for run_name, df in logs.items():
         if "epoch_seconds" not in df.columns:

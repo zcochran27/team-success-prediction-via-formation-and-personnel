@@ -1,34 +1,27 @@
 """Cross-model comparison for the half-subs pipeline.
 
-Loads every artifact under ``artifacts/half_subs/`` and produces:
+Loads every artifact under artifacts/half_subs/ and produces:
+  - build_summary_table(...): one DataFrame row per model with MAE, RMSE, R2,
+    and sign accuracy on the shared held-out test parquet
+    (test_snapshots_half_subs.parquet), tagged by family and feature blocks.
+  - plot_metric_bars(summary, ...): bar chart per metric.
+  - plot_pred_vs_target(...): scatter grid by model.
+  - plot_residual_hists(...): residual histograms by model.
 
-  * ``build_summary_table(...)`` -- one DataFrame row per model with
-    MAE / RMSE / R² / sign-acc on the shared held-out test parquet
-    (``test_snapshots_half_subs.parquet``), tagged by model family and
-    feature blocks.
-  * ``plot_metric_bars(summary, ...)`` -- bar chart per metric.
-  * ``plot_pred_vs_target(...)``  -- scatter grid by model.
-  * ``plot_residual_hists(...)``  -- residual histograms by model.
+Three model families live side by side under artifacts/half_subs/:
+  1. tab: XGBoost on the 8 starter-only feature configs (position vs
+     archetype x ego vs matchup x +/- stats). Folders tab_<kind>_<opp>[_stats].
+  2. tab_subs: XGBoost on the 8 sub-aware feature configs (same axes, but the
+     features also expose the 11 sub slots' position/archetype/start_min/
+     duration/stats). Folders tab_subs_<kind>_<opp>[_stats].
+  3. gnn_subs: HalfSubsGNN across the same 8 configs (kind x mode x +/-
+     stats), with typed edges (formation/sub/time-overlap matchup) and node
+     features (is_starter/duration/start_min/end_min/was_subbed_off). Folders
+     gnn_subs_<kind>_<mode>_coords[_stats].
 
-Three model families live side-by-side under ``artifacts/half_subs/``:
-
-  1. **tab** -- XGBoost on the 8 starter-only feature configurations
-     (position vs archetype × ego vs matchup × ±stats). Folder names
-     ``tab_<kind>_<opp>[_stats]``.
-  2. **tab_subs** -- XGBoost on the 8 sub-aware feature configurations
-     (same axes, but the feature set also exposes the 11 sub slots'
-     position/archetype/start_min/duration/stats). Folder names
-     ``tab_subs_<kind>_<opp>[_stats]``.
-  3. **gnn_subs** -- HalfSubsGNN runs across the same 8 configurations
-     (kind × mode × ±stats), with typed edges (formation / sub /
-     time-overlap matchup) and node features
-     (is_starter / duration / start_min / end_min / was_subbed_off).
-     Folder names ``gnn_subs_<kind>_<mode>_coords[_stats]``.
-
-Every model writes a ``summary.json`` and a per-test-row predictions
-parquet alongside it -- the loader pulls metrics from ``summary.json``
-and the ``test_preds.parquet`` / ``val_preds.parquet`` file for the
-residual / scatter plots.
+Every model writes a summary.json and a per-test-row predictions parquet;
+the loader pulls metrics from summary.json and the test_preds.parquet or
+val_preds.parquet file for the residual and scatter plots.
 """
 
 from __future__ import annotations
@@ -63,9 +56,7 @@ class ModelRun:
     test_targets: np.ndarray | None
 
 
-# --------------------------------------------------------------------------- #
-# Pretty labels                                                               #
-# --------------------------------------------------------------------------- #
+# Pretty labels
 
 _FAMILY_PRETTY: dict[str, str] = {
     "tab":      "tab",
@@ -80,14 +71,12 @@ def _pretty(family: str, kind: str, opp: str, use_stats: bool) -> str:
     return base + (" · stats" if use_stats else "")
 
 
-# --------------------------------------------------------------------------- #
-# Folder name parsing                                                         #
-# --------------------------------------------------------------------------- #
+# Folder name parsing
 
 def _parse_tab_name(name: str, *, family: str) -> tuple[str, str, bool] | None:
-    """Parse ``tab_<kind>_<opp>[_stats]`` or ``tab_subs_<kind>_<opp>[_stats]``.
+    """Parse tab_<kind>_<opp>[_stats] or tab_subs_<kind>_<opp>[_stats].
 
-    Returns ``(kind, opp, use_stats)`` or ``None`` if it doesn't match.
+    Returns (kind, opp, use_stats) or None if it doesn't match.
     """
     prefix = f"{family}_"
     if not name.startswith(prefix):
@@ -106,10 +95,10 @@ def _parse_tab_name(name: str, *, family: str) -> tuple[str, str, bool] | None:
 
 
 def _parse_gnn_subs_name(name: str) -> tuple[str, str, bool] | None:
-    """Parse ``gnn_subs_<kind>_<mode>_coords[_stats]``.
+    """Parse gnn_subs_<kind>_<mode>_coords[_stats].
 
-    Returns ``(kind, opp, use_stats)`` where ``opp = "matchup"`` if the
-    GNN was paired, ``"ego"`` if single -- matching the tabular axis.
+    Returns (kind, opp, use_stats) where opp = "matchup" if the
+    GNN was paired, "ego" if single, matching the tabular axis.
     """
     if not name.startswith("gnn_subs_"):
         return None
@@ -126,14 +115,12 @@ def _parse_gnn_subs_name(name: str) -> tuple[str, str, bool] | None:
     return kind, opp, use_stats
 
 
-# --------------------------------------------------------------------------- #
-# Loader                                                                      #
-# --------------------------------------------------------------------------- #
+# Loader
 
 def _load_preds(run_dir: Path) -> tuple[np.ndarray, np.ndarray] | tuple[None, None]:
-    """Return ``(preds, targets)`` from either ``test_preds.parquet`` or
-    ``val_preds.parquet``, whichever exists. Both schemas carry ``target``
-    and ``pred`` columns.
+    """Return (preds, targets) from either test_preds.parquet or
+    val_preds.parquet, whichever exists. Both schemas carry target
+    and pred columns.
     """
     for fname in ("test_preds.parquet", "val_preds.parquet"):
         p = run_dir / fname
@@ -145,7 +132,7 @@ def _load_preds(run_dir: Path) -> tuple[np.ndarray, np.ndarray] | tuple[None, No
 
 
 def _gnn_metric_keys(metrics: dict[str, Any]) -> dict[str, float]:
-    """GNN summary uses ``best_val_<metric>``; tabular uses bare ``<metric>``."""
+    """GNN summary uses best_val_<metric>; tabular uses bare <metric>."""
     out: dict[str, float] = {}
     for short, src in (
         ("mae", "best_val_mae"),
@@ -170,9 +157,9 @@ def _tab_metric_keys(metrics: dict[str, Any]) -> dict[str, float]:
 
 
 def load_runs(artifacts_root: Path = _HALF_SUBS_ROOT) -> dict[str, ModelRun]:
-    """Discover every ``<family>_…/summary.json`` in ``artifacts_root``.
+    """Discover every <family>_…/summary.json in artifacts_root.
 
-    Returns ``{key: ModelRun}``. ``key`` is the folder name; the run's
+    Returns {key: ModelRun}. key is the folder name; the run's
     family is inferred from the folder prefix.
     """
     runs: dict[str, ModelRun] = {}
@@ -218,9 +205,7 @@ def load_runs(artifacts_root: Path = _HALF_SUBS_ROOT) -> dict[str, ModelRun]:
     return runs
 
 
-# --------------------------------------------------------------------------- #
-# Summary table + plots                                                       #
-# --------------------------------------------------------------------------- #
+# Summary table + plots
 
 _AXIS_PAIRS: dict[str, tuple[str, str, str]] = {
     # axis -> (column, "better" value, "worse" value). Delta is computed as
@@ -250,21 +235,21 @@ def ablation_delta(
 ) -> pd.DataFrame:
     """Marginal contribution of one design axis.
 
-    ``axis`` selects the dimension to ablate:
+    axis selects the dimension to ablate:
 
-      * ``"kind"``       -- archetype vs position
-      * ``"use_stats"``  -- stats vs no-stats
-      * ``"opponent"``   -- matchup vs ego
-      * ``"family"``     -- gnn_subs vs tab_subs
+      * "kind"      , archetype vs position
+      * "use_stats" , stats vs no-stats
+      * "opponent"  , matchup vs ego
+      * "family"    , gnn_subs vs tab_subs
 
     Returns one row per cell of the remaining (other-axis) grid. Each
-    entry is ``(<hi value> - <lo value>)`` for the corresponding axis
+    entry is (<hi value> - <lo value>) for the corresponding axis
     pair (archetype-position, stats-no_stats, matchup-ego, gnn-tab).
 
-    If ``normalize_signs=True`` (default), signs on lower-is-better
+    If normalize_signs=True (default), signs on lower-is-better
     metrics (MAE, RMSE, MSE) are flipped so a positive value always
-    means "the better-named setting helped". With ``normalize_signs=
-    False`` the table is the raw delta: for error metrics, negative
+    means "the better-named setting helped". With normalize_signs=
+    False the table is the raw delta: for error metrics, negative
     means the named choice lowered the error (good); for R^2 / sign
     acc, positive means the named choice raised the metric (good).
     """
@@ -293,14 +278,14 @@ def ablation_summary(
 ) -> pd.DataFrame:
     """Mean marginal improvement across every cell, one row per design axis.
 
-    One row per axis (``archetype - position``, ``stats - no_stats``,
-    ``matchup - ego``, ``gnn - tab``); columns are the metrics. Each
+    One row per axis (archetype - position, stats - no_stats,
+    matchup - ego, gnn - tab); columns are the metrics. Each
     cell is the **mean
     delta over the other-axis grid** of the per-axis
     :func:`ablation_delta` table.
 
-    With ``normalize_signs=True`` (default), positive = the named
-    choice helped on average. With ``normalize_signs=False`` the raw
+    With normalize_signs=True (default), positive = the named
+    choice helped on average. With normalize_signs=False the raw
     delta is returned: for error metrics (MAE/RMSE/MSE) negative means
     improvement; for R^2 / sign acc, positive means improvement.
 
@@ -367,7 +352,7 @@ def plot_metric_bars(
             fontsize=10,
         )
         ax.grid(axis="y", alpha=0.3)
-    fig.suptitle("Half-subs model comparison — shared held-out test set", y=1.04)
+    fig.suptitle("Half-subs model comparison - shared held-out test set", y=1.04)
     fig.tight_layout()
     return fig
 
@@ -376,7 +361,7 @@ def plot_pred_vs_target(
     runs: Mapping[str, ModelRun],
     figsize: tuple[float, float] | None = None,
 ) -> Figure:
-    """Scatter ``pred`` vs ``target`` per model, in a grid sorted by MSE."""
+    """Scatter pred vs target per model, in a grid sorted by MSE."""
     runs_sorted = sorted(
         [r for r in runs.values() if r.test_preds is not None],
         key=lambda r: r.metrics.get("rmse", float("inf")),
@@ -397,7 +382,7 @@ def plot_pred_vs_target(
         hi = float(max(t.max(), p.max()))
         ax.plot([lo, hi], [lo, hi], "k--", lw=0.7, alpha=0.5)
         pearson = float(np.corrcoef(t, p)[0, 1]) if len(t) >= 2 else float("nan")
-        ax.set_title(f"{r.pretty} — r = {pearson:+.3f}", fontsize=8)
+        ax.set_title(f"{r.pretty} - r = {pearson:+.3f}", fontsize=8)
         ax.grid(alpha=0.3)
         if idx % ncols == 0:
             ax.set_ylabel("prediction")
@@ -406,7 +391,7 @@ def plot_pred_vs_target(
     # Hide unused axes.
     for j in range(n, nrows * ncols):
         axes[j // ncols, j % ncols].axis("off")
-    fig.suptitle("Predictions vs targets — half-subs models", y=1.005)
+    fig.suptitle("Predictions vs targets - half-subs models", y=1.005)
     fig.tight_layout()
     return fig
 
@@ -436,7 +421,7 @@ def plot_residual_hists(
                 edgecolor="white", lw=0.4)
         ax.axvline(0.0, color="k", lw=0.6, alpha=0.4)
         ax.set_title(
-            f"{r.pretty} — μ = {resid.mean():+.3f}, σ = {resid.std():.3f}",
+            f"{r.pretty} - μ = {resid.mean():+.3f}, σ = {resid.std():.3f}",
             fontsize=8,
         )
         ax.grid(alpha=0.3)
@@ -444,14 +429,12 @@ def plot_residual_hists(
             ax.set_xlabel("pred − target")
     for j in range(n, nrows * ncols):
         axes[j // ncols, j % ncols].axis("off")
-    fig.suptitle("Residuals — half-subs models", y=1.005)
+    fig.suptitle("Residuals - half-subs models", y=1.005)
     fig.tight_layout()
     return fig
 
 
-# --------------------------------------------------------------------------- #
-# CLI                                                                         #
-# --------------------------------------------------------------------------- #
+# CLI
 
 def _cli() -> None:
     import argparse

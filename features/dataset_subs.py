@@ -1,17 +1,12 @@
-"""Per-(match, half, focal-team) dataset wrapping the half-with-subs parquet.
+"""Per-(match, half, focal-team) dataset over the half-with-subs parquet.
 
-Mirrors the API of :mod:`features.dataset` but speaks the half-with-subs
-schema: 11 starter slots + 11 sub slots per side, each with position,
-archetype, season stats, duration (and ``sub_start_min`` for subs). The
-graph builder in :mod:`features.build_graphs_subs` produces variable-size
-``Data`` objects (11..22 nodes per team) that PyG's :class:`Batch`
-handles natively.
+Each side has 11 starter slots and 11 sub slots, with position, archetype,
+season stats, duration (and sub_start_min for subs). The graph builder in
+build_graphs_subs.py produces variable-size Data objects (11 to 22 nodes per
+team) that PyG's Batch handles natively.
 
-Only the rows that survive :func:`features.snapshots.filter_buildable_snapshots`
-are exposed -- same buildable subset the rest of the project uses, so this
-dataset stays apples-to-apples with the existing tabular and template
-GNN runs on per_half / k6 / baseline data when restricted to the same
-underlying matches.
+Only rows that survive filter_buildable_snapshots are exposed, so this stays
+on the same buildable subset the rest of the project uses.
 """
 
 from __future__ import annotations
@@ -35,30 +30,22 @@ from features.snapshots import filter_buildable_snapshots
 class HalfSubsDataset(Dataset):
     """Variable-size per-half graphs with explicit substitution structure.
 
-    Parameters
-    ----------
-    snapshots_path
-        Path to ``lineup_snapshots_half_subs.parquet`` (or its
-        train/test split files).
-    kind
-        ``"position"`` or ``"archetype"`` -- which label drives the node
-        embedding. Both label streams are present on every node; this
-        switch only controls which index is fed to the embedding.
-    mode
-        ``"single"`` to return ``(team1_graph, team2_graph, y)`` per row
-        (model forwards each side and subtracts to enforce antisymmetry),
-        or ``"paired"`` to return ``(joint_graph, y)`` per row with cross-
-        team matchup edges weighted by on-pitch time overlap.
-    use_stats
-        Append the 10-D season-stat vector to each node and the 4-D
-        stat-diff edge features (see ``features.build_graphs_subs``).
-    use_coords
-        Carried for API symmetry with the existing model; the half-subs
-        builder always emits the coord-derived ``[dist, dx, dy]`` block on
-        edges, so this flag currently only documents intent. The model
-        toggles whether to project ``pos`` into node embeddings.
-    target_col
-        Regression target. Defaults to the per-30 xG differential.
+    Args:
+        snapshots_path: path to lineup_snapshots_half_subs.parquet (or its
+            train/test split files).
+        kind: "position" or "archetype", which label drives the node
+            embedding. Both label streams are on every node; this only
+            controls which index is embedded.
+        mode: "single" returns (team1_graph, team2_graph, y) per row (the
+            model forwards each side and subtracts to enforce antisymmetry);
+            "paired" returns (joint_graph, y) per row with cross-team matchup
+            edges weighted by on-pitch time overlap.
+        use_stats: append the 10-D season-stat vector to each node and the
+            4-D stat-diff edge features.
+        use_coords: kept for API symmetry; the builder always emits the
+            coord-derived [dist, dx, dy] edge block, so this only documents
+            intent. The model decides whether to project pos into embeddings.
+        target_col: regression target, default the per-30 xG differential.
     """
 
     def __init__(
@@ -115,7 +102,7 @@ class HalfSubsDataset(Dataset):
 
 
 def paired_collate(samples: list[tuple[Data, Data, float]]) -> tuple[Batch, Batch, torch.Tensor]:
-    """Collate ``(team1, team2, y)`` triples (``mode="single"``)."""
+    """Collate (team1, team2, y) triples (mode="single")."""
     team1 = Batch.from_data_list([s[0] for s in samples])
     team2 = Batch.from_data_list([s[1] for s in samples])
     y = torch.tensor([s[2] for s in samples], dtype=torch.float)
@@ -123,14 +110,14 @@ def paired_collate(samples: list[tuple[Data, Data, float]]) -> tuple[Batch, Batc
 
 
 def joint_collate(samples: list[tuple[Data, float]]) -> tuple[Batch, torch.Tensor]:
-    """Collate ``(joint_graph, y)`` pairs (``mode="paired"``)."""
+    """Collate (joint_graph, y) pairs (mode="paired")."""
     batch = Batch.from_data_list([s[0] for s in samples])
     y = torch.tensor([s[1] for s in samples], dtype=torch.float)
     return batch, y
 
 
 def collate_for(mode: GraphMode):
-    """Return the collate function matching ``mode``."""
+    """Return the collate function matching mode."""
     if mode == "single":
         return paired_collate
     if mode == "paired":

@@ -1,39 +1,30 @@
-"""GNN architecture for the half-with-subs dataset.
+"""GNN for the half-with-subs dataset.
 
-The model is a typed-edge GAT/GATv2/TransformerConv stack with attention
-pooling, tailored to the variable-size per-half graphs produced by
-:func:`features.build_graphs_subs.build_half_subs_graph`. Key differences
-from :class:`models.gnn.LineupGNN`:
+A typed-edge GAT/GATv2/TransformerConv stack with attention pooling over the
+variable-size per-half graphs from build_half_subs_graph. Notable points:
 
-* **Variable node count.** Graphs span 11–22 nodes per team (vs. always
-  11/22). PyG's :class:`~torch_geometric.data.Batch` handles this
-  natively; the only place the model touches ``n_nodes`` is the
-  attention pool, which already uses ``batch.batch`` indices.
+  - Variable node count. Graphs span 11 to 22 nodes per team. PyG's Batch
+    handles this; the only place the model touches n_nodes is the attention
+    pool, which uses batch.batch indices.
+  - Per-node block. On top of the categorical embedding and template coords,
+    the model consumes a 5-D numeric block (is_starter, duration, start_min,
+    end_min, was_substituted_off) via a learned linear projection added to
+    the embedding. Set use_stats to also project the 10-D season-stat vector.
+  - Typed edges. edge_attr carries a 3-D edge-type one-hot (formation, sub,
+    matchup) plus per-type continuous features (sub minute, same-position
+    flag, overlap fraction). All edges share the same edge_attr width;
+    irrelevant columns are 0. GATConv variants consume edge_attr directly, so
+    the layers can learn type-conditional attention.
 
-* **Richer per-node block.** On top of the categorical embedding and
-  template coords, the model consumes a 5-D numeric block
-  (``is_starter, duration, start_min, end_min, was_substituted_off``)
-  via a learned linear projection that gets added to the embedding.
-  Toggle ``use_stats`` to also project the 10-D season-stat vector.
+The toggleable axes:
+  - kind: position | archetype (selects the embedding vocab)
+  - mode: single | paired (single forwards each team; paired builds a joint
+    graph with matchup edges)
+  - use_stats: include season stats and stat-diff edge features
+  - use_coords: include template (x, y) in node embeddings
 
-* **Typed edges.** ``edge_attr`` carries a 3-D edge-type one-hot
-  (formation / sub / matchup) plus per-type continuous features
-  (sub minute, same-position flag, overlap fraction). All edges share
-  the same ``edge_attr`` width; irrelevant columns are 0 for the type
-  they don't apply to. GATConv variants consume ``edge_attr`` directly,
-  so the layers can learn type-conditional attention.
-
-The four toggleable axes from the existing model grid carry over:
-
-  * ``kind``       -- position | archetype (selects the embedding vocab)
-  * ``mode``       -- single | paired (single forwards each team, paired
-                      builds a joint graph with matchup edges)
-  * ``use_stats``  -- include season stats and stat-diff edge features
-  * ``use_coords`` -- include template (x, y) in node embeddings
-
-For paired mode, prediction is ``head(team1_pool) - head(team2_pool)`` so
-the same lineup facing itself still predicts exactly zero -- the
-antisymmetric trick from :class:`models.gnn.LineupGNN`.
+In paired mode, prediction is head(team1_pool) - head(team2_pool) so the
+same lineup facing itself predicts exactly zero.
 """
 
 from __future__ import annotations
@@ -98,14 +89,13 @@ def _make_conv(
 class HalfSubsGNN(nn.Module):
     """Variable-size graph regressor for the half-with-subs dataset.
 
-    Forward expects a PyG ``Batch`` whose nodes carry:
-
-      * ``x``        -- (N,) long, categorical embedding index
-      * ``x_num``    -- (N, 5) float (is_starter, duration, start, end, was_subbed_off)
-      * ``pos``      -- (N, 2) float (normalized template coords)
-      * ``stats``    -- (N, 10) float, present iff ``use_stats``
-      * ``edge_attr`` -- (E, edge_dim) float as built by ``features.build_graphs_subs``
-      * ``team``     -- (N,) long, paired mode only (0 = team1, 1 = team2)
+    Forward expects a PyG Batch whose nodes carry:
+      x:         (N,) long, categorical embedding index
+      x_num:     (N, 5) float (is_starter, duration, start, end, was_subbed_off)
+      pos:       (N, 2) float (normalized template coords)
+      stats:     (N, 10) float, present when use_stats
+      edge_attr: (E, edge_dim) float from features.build_graphs_subs
+      team:      (N,) long, paired mode only (0 = team1, 1 = team2)
     """
 
     def __init__(
@@ -143,8 +133,8 @@ class HalfSubsGNN(nn.Module):
         self.coord_proj = nn.Linear(2, hidden_dim) if use_coords else None
         self.stats_proj = nn.Linear(STAT_DIM, hidden_dim) if use_stats else None
 
-        # All edges carry the full base block + type one-hot; the stats-diff
-        # block is appended when ``use_stats`` is set.
+        # All edges carry the base block plus type one-hot; the stats-diff
+        # block is appended when use_stats is set.
         edge_dim = edge_attr_dim(use_stats)
         self.convs = nn.ModuleList()
         for _ in range(num_layers):
@@ -186,12 +176,12 @@ class HalfSubsGNN(nn.Module):
         return x
 
     def forward(self, batch: Batch) -> torch.Tensor:
-        """Return one scalar per graph in ``batch``.
+        """Return one scalar per graph in batch.
 
-        - ``mode="single"``: pools every node in each graph; the trainer
-          calls this once per team and subtracts the two predictions.
-        - ``mode="paired"``: splits nodes by ``batch.team`` and returns
-          ``head(team1_pool) - head(team2_pool)``.
+        - mode="single": pools every node in each graph; the trainer calls
+          this once per team and subtracts the two predictions.
+        - mode="paired": splits nodes by batch.team and returns
+          head(team1_pool) - head(team2_pool).
         """
         node_emb = self._encode_nodes(batch)
         if self.mode == "single":
@@ -211,7 +201,7 @@ def _predict_diff(
     loader_item,
     device: torch.device | str,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """Forward one loader item, returning ``(prediction, target)``."""
+    """Forward one loader item, returning (prediction, target)."""
     if model.mode == "single":
         b1, b2, y = loader_item
         b1 = b1.to(device); b2 = b2.to(device); y = y.to(device)
@@ -227,7 +217,7 @@ def predict(
     loader,
     device: torch.device | str,
 ) -> torch.Tensor:
-    """Return concatenated predictions over ``loader`` in eval mode."""
+    """Return concatenated predictions over loader in eval mode."""
     model.eval()
     preds: list[torch.Tensor] = []
     for item in loader:

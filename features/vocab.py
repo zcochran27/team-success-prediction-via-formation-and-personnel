@@ -1,13 +1,13 @@
 """Shared vocabularies and dimension constants for the half-subs pipeline.
 
-Contains the position / archetype label vocabularies the lineup-snapshot
-data uses, the dimensions of the per-(player, season) stat vector and
-its derived edge-feature block, plus the small ``vocab_size`` helper used
-by both the graph builder and the model to size the embedding layer.
+Holds the position and archetype label vocabularies used by the lineup
+snapshots, the dimensions of the per-(player, season) stat vector and its
+derived edge-feature block, and the small vocab_size helper used by both
+the graph builder and the model to size the embedding layer.
 
-These constants are stable across snapshot variants -- they describe the
-universe of slot labels and per-player features the project works in,
-not the topology of any particular dataset.
+These constants are stable across snapshot variants; they describe the set
+of slot labels and per-player features the project uses, not the topology
+of any particular dataset.
 """
 
 from __future__ import annotations
@@ -22,8 +22,8 @@ GraphMode = Literal["single", "paired"]
 STAT_DIM: int = 10
 
 # Width of the stat-derived edge feature block appended by the graph builder
-# when stats are supplied. See ``features.build_graphs_subs._finalize_edge_attr``
-# for the column meanings.
+# when stats are supplied. See build_graphs_subs._finalize_edge_attr for the
+# column meanings.
 STAT_EDGE_DIM: int = 4
 
 # Union of (a) positions observed in the lineup-snapshot parquets and
@@ -35,12 +35,11 @@ POSITION_VOCAB: tuple[str, ...] = (
     "SS", "ST",
 )
 
-# Archetypes are ``"<position_group>-<cluster_idx>"`` plus a ``"MISSING"``
-# sentinel. Many players don't have a season-level archetype assignment
-# (sub minutes too low, missing season data, etc.) and the dataset
-# deliberately keeps those rows -- the fact-of-missingness is itself a
-# learnable signal, so NaN archetype labels are mapped to
-# ``MISSING_ARCHETYPE`` before embedding.
+# Archetypes are "<position_group>-<cluster_idx>" plus a "MISSING" sentinel.
+# Many players have no season-level archetype (too few sub minutes, missing
+# season data, etc.) and the dataset keeps those rows on purpose, since the
+# missingness is itself a signal. NaN archetype labels are mapped to
+# MISSING_ARCHETYPE before embedding.
 MISSING_ARCHETYPE: str = "MISSING"
 ARCHETYPE_VOCAB: tuple[str, ...] = (
     "CD-0", "CD-1", "CD-2",
@@ -56,7 +55,7 @@ ARCHETYPE_VOCAB: tuple[str, ...] = (
 
 
 def vocab_size(kind: PlayerFeatureKind) -> int:
-    """Return ``num_embeddings`` for the matching ``nn.Embedding``."""
+    """Return num_embeddings for the matching nn.Embedding."""
     if kind == "position":
         return len(POSITION_VOCAB)
     if kind == "archetype":

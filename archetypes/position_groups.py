@@ -1,21 +1,14 @@
-"""Partition players into the 6 position groups and filter the event log.
+"""Assign players to position groups and filter the event log.
 
-Position groups
----------------
-- Center Defenders (CD)
-- Left Wide Defenders (LWD), Right Wide Defenders (RWD)
-- Center Midfielders (CM)
-- Center Forwards (CF)
-- Left Wide Players (LWP), Right Wide Players (RWP)
-  -- wingers, wide attacking mids, wide forwards
-- Goalkeepers (GK)
+The eight position groups are center defenders (CD), left/right wide
+defenders (LWD/RWD), center midfielders (CM), center forwards (CF),
+left/right wide players (LWP/RWP), and goalkeepers (GK).
 
-The "logical event types" used by the archetype pipeline are not all primary
-Wyscout types. ``pass``, ``shot``, and ``goalkeeper_exit`` are direct
-``type_primary`` values, but ``offensive_duel`` / ``defensive_duel`` are
-``type_primary == "duel"`` rows whose ``type_secondary`` list contains the
-corresponding tag (ground duels only -- aerial duels are not tagged
-offensive/defensive in Wyscout).
+Most logical event types map straight from Wyscout's type_primary (pass,
+shot, goalkeeper_exit). The two ground duels (offensive_duel,
+defensive_duel) are type_primary == "duel" rows whose type_secondary list
+carries the matching tag; aerial duels are not tagged offensive or
+defensive in this export.
 """
 
 from __future__ import annotations
@@ -39,7 +32,7 @@ WYSCOUT_POSITION_TO_GROUP: dict[str, str] = {
     "AMF": "CM",
     # Center Forwards
     "CF": "CF", "SS": "CF",
-    # Wide Players: wingers, wide attacking mids, wide forwards -- split by side
+    # Wide Players: wingers, wide attacking mids, wide forwards, split by side
     "LW": "LWP", "LAMF": "LWP", "LWF": "LWP",
     "RW": "RWP", "RAMF": "RWP", "RWF": "RWP",
     # Goalkeepers
@@ -57,33 +50,17 @@ EVENT_TYPES = (
 
 
 def wyscout_position_to_group(position: str) -> str:
-    """Map a Wyscout position label to one of the 6 position groups.
-
-    Parameters
-    ----------
-    position
-        A Wyscout position label as it appears in the raw event/lineup data
-        (e.g. ``"LCB"``, ``"RW"``, ``"GK"``).
-
-    Returns
-    -------
-    str
-        One of ``POSITION_GROUPS``.
-
-    Raises
-    ------
-    KeyError
-        If ``position`` is not a recognized Wyscout label.
+    """Map a Wyscout position label (e.g. "LCB", "RW", "GK") to one of the
+    eight position groups. Raises KeyError on an unknown label.
     """
     return WYSCOUT_POSITION_TO_GROUP[position]
 
 
 def assign_position_groups(players: pd.DataFrame, position_col: str = "position") -> pd.DataFrame:
-    """Add a ``position_group`` column to a players or events dataframe.
+    """Add a position_group column to a players or events dataframe.
 
-    Unknown / missing position labels are mapped to ``NaN`` rather than raising
-    so this can be applied to the full event log (which contains ``None``
-    rows for non-player events).
+    Unknown or missing labels become NaN instead of raising, so this can be
+    applied to the full event log (which has None rows for non-player events).
     """
     out = players.copy()
     out["position_group"] = out[position_col].map(WYSCOUT_POSITION_TO_GROUP)
@@ -91,12 +68,11 @@ def assign_position_groups(players: pd.DataFrame, position_col: str = "position"
 
 
 def derive_logical_event_type(events: pd.DataFrame) -> pd.Series:
-    """Compute the project's "logical event type" for each event row.
+    """Compute the logical event type for each event row.
 
-    Maps each row to one of ``EVENT_TYPES`` (or ``NaN`` if it doesn't belong
-    to any of them). ``pass`` / ``shot`` / ``goalkeeper_exit`` follow
-    ``type_primary``; ``offensive_duel`` / ``defensive_duel`` are duels whose
-    ``type_secondary`` list contains the corresponding tag.
+    Each row maps to one of EVENT_TYPES (or NaN). pass/shot/goalkeeper_exit
+    follow type_primary; offensive_duel/defensive_duel are duels whose
+    type_secondary list contains the matching tag.
     """
     tp = events["type_primary"]
     out = pd.Series(pd.NA, index=events.index, dtype="object")
@@ -108,10 +84,8 @@ def derive_logical_event_type(events: pd.DataFrame) -> pd.Series:
     duel_mask = tp == "duel"
     if duel_mask.any():
         sec = events.loc[duel_mask, "type_secondary"]
-        # Each cell is a list[str] (or None). A duel can carry at most one
-        # of {offensive_duel, defensive_duel, aerial_duel} in the project's
-        # taxonomy -- aerial duels are not tagged offensive/defensive in this
-        # Wyscout export.
+        # Each cell is a list[str] or None. A duel carries at most one of
+        # offensive_duel, defensive_duel, aerial_duel.
         def _has(tags, want):
             return tags is not None and want in tags
         off = sec.map(lambda t: _has(t, "offensive_duel")).fillna(False).astype(bool)
@@ -130,13 +104,11 @@ def filter_events_by_group(
     position_group: str,
     event_types: Iterable[str],
 ) -> pd.DataFrame:
-    """Return the subset of ``events`` produced by players in ``position_group``
-    whose logical event type is in ``event_types``.
+    """Return the events from players in position_group whose logical event
+    type is in event_types.
 
-    The frame is expected to already have a ``position_group`` column (from
-    :func:`assign_position_groups`) and a ``logical_event_type`` column (from
-    :func:`derive_logical_event_type`). The orchestrator computes both once
-    on the full event log so callers don't pay for the lookup repeatedly.
+    events must already have position_group and logical_event_type columns;
+    these are computed once on the full event log upstream.
     """
     want = set(event_types)
     mask = (events["position_group"] == position_group) & events["logical_event_type"].isin(want)

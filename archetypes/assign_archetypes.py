@@ -12,10 +12,10 @@ def assign_archetypes(
     player_features: pd.DataFrame,
     archetype_models: dict[str, dict[str, Any]],
 ) -> pd.DataFrame:
-    """Add an ``archetype`` column to the player feature table.
+    """Add an archetype column to the player feature table.
 
-    Returns the input frame plus an ``archetype`` column of the form
-    ``"<position_group>-<cluster_index>"``.
+    Returns the input frame plus an archetype column of the form
+    "<position_group>-<cluster_index>".
     """
     out = player_features.copy()
     out["archetype"] = pd.NA
@@ -30,7 +30,7 @@ def assign_archetypes(
 
 
 def save_player_archetype_map(assignments: pd.DataFrame, output_path: Path) -> None:
-    """Persist the player->archetype mapping to ``output_path`` as parquet."""
+    """Save the player-to-archetype mapping to output_path as parquet."""
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     cols = ["player_id", "season", "position_group", "player_position", "archetype"]

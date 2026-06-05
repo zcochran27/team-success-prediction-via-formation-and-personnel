@@ -1,13 +1,11 @@
 # graphs/notebooks/
 
-Visualization notebooks for the half-with-subs graph builder. Drawing
-helpers live in [`../visualize_half_subs.py`](../visualize_half_subs.py)
-so the notebooks stay thin -- they load a row, build, and render.
+Visualization notebook for the half-with-subs graph builder. The drawing
+helpers live in [`../visualize_half_subs.py`](../visualize_half_subs.py) so the
+notebook stays thin: it loads a row, builds the graph, and renders.
 
-| Notebook | Inspects |
-|---|---|
-| [half_subs_graph_demo.ipynb](half_subs_graph_demo.ipynb) | One real row from [`data/processed/lineup_snapshots_half_subs.parquet`](../../data/processed/) → [`features.build_graphs_subs.build_half_subs_graph`](../../features/build_graphs_subs.py). Prints the node + edge tables, then renders both single-team graphs side by side and the joint paired graph with matchup edges weighted by on-pitch time overlap. |
-
-Older notebooks describing the prior (joint-window snapshot) builder
-were moved to [`../../legacy/graphs/notebooks/`](../../legacy/graphs/notebooks/)
-when the repo refocused on the half-with-subs pipeline.
+- [half_subs_graph_demo.ipynb](half_subs_graph_demo.ipynb): takes one real row
+  from `data/processed/lineup_snapshots_half_subs.parquet`, builds the graph
+  with `build_half_subs_graph`, prints the node and edge tables, then renders
+  both single-team graphs side by side and the joint paired graph with matchup
+  edges weighted by on-pitch time overlap.

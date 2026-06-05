@@ -1,17 +1,16 @@
-"""Augment the lineup-snapshot table with in-window match-state features.
+"""Add in-window match-state features to the lineup-snapshot table.
 
-For each snapshot row -- one ``(match, joint-stable window)`` -- this module
-sums the shots taken during the window and attaches per-team xG and goal
-counts, plus the home-minus-away / away-minus-home differentials.
+For each snapshot row (one (match, joint-stable window)) this sums the shots
+taken during the window and attaches per-team xG and goal counts, plus the
+home-minus-away and away-minus-home differentials.
 
-Output columns added:
-  home_xg, away_xg, home_goals, away_goals,
-  xg_home_minus_away, xg_away_minus_home,
-  goals_home_minus_away, goals_away_minus_home
+Columns added: home_xg, away_xg, home_goals, away_goals,
+xg_home_minus_away, xg_away_minus_home, goals_home_minus_away,
+goals_away_minus_home.
 
-Penalty-shootout events (``matchPeriod == "P"``) are excluded; their clock is
-not continuous with the snapshot timeline. Extra time (``1E`` / ``2E``) is
-included since its clock continues past 90'.
+Penalty-shootout events (matchPeriod == "P") are excluded; their clock is
+not continuous with the snapshot timeline. Extra time (1E, 2E) is kept since
+its clock continues past 90 minutes.
 """
 
 from __future__ import annotations
@@ -30,11 +29,11 @@ _SHOT_EVENT_COLUMNS = [
 
 
 def _timestamp_to_minutes(ts: pd.Series) -> pd.Series:
-    """Parse ``"HH:MM:SS.ms"`` strings into continuous match minutes (float).
+    """Parse "HH:MM:SS.ms" strings into continuous match minutes (float).
 
-    The Wyscout event clock starts at 0 at first-half kickoff and resumes at
-    ~45' at second-half kickoff (halftime doesn't accumulate), so the
-    resulting minute aligns with the formations table's ``period_start_min``.
+    The Wyscout clock starts at 0 at first-half kickoff and resumes around 45
+    at second-half kickoff (halftime doesn't accumulate), so the minute lines
+    up with the formations table's period_start_min.
     """
     parts = ts.str.split(":", expand=True)
     h = parts[0].astype(float)
@@ -62,12 +61,11 @@ def add_match_state_features(
     snapshots: pd.DataFrame,
     events_path: Path,
 ) -> pd.DataFrame:
-    """Return ``snapshots`` with xG / goal columns appended per joint window.
+    """Return snapshots with xG and goal columns appended per joint window.
 
-    ``snapshots`` must have ``match_id``, ``period_start_min``,
-    ``period_end_min``, ``home_team_id``, ``away_team_id``. The function
-    reads shots straight from ``events_path`` (a parquet file in the schema
-    of ``data/raw/all_events.parquet``).
+    snapshots must have match_id, period_start_min, period_end_min,
+    home_team_id, away_team_id. Shots are read from events_path (a parquet in
+    the schema of data/raw/all_events.parquet).
     """
     snap = snapshots.copy().reset_index(drop=True)
     snap["_snap_id"] = snap.index
@@ -91,9 +89,8 @@ def add_match_state_features(
         by="match_id",
         direction="backward",
     )
-    # Drop shots that fall outside any snapshot window (e.g., a shot at 95'
-    # when the last period ends at 93' with NaN upper-bound -- those just
-    # get filtered out here).
+    # Drop shots that fall outside any snapshot window (e.g. a shot at 95'
+    # when the last period ends at 93' with a NaN upper bound).
     joined = joined.dropna(subset=["_snap_id"])
     joined = joined[joined["time_min"] < joined["period_end_min"]]
 

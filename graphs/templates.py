@@ -1,13 +1,13 @@
 """Canonical graph topology per formation string.
 
 Each formation has a fixed list of 11 player "slots" with template pitch
-coordinates (x = depth, 0=own goal -> 100=opponent goal; y = lateral,
-0..80 across the pitch). Edges between slots are derived from
-**rule-based tactical connectivity** (not a distance-based k-NN cut),
-so the graph encodes the connections a soccer coach would draw on a
-chalkboard rather than a geometric neighborhood.
+coordinates (x = depth, 0 = own goal to 100 = opponent goal; y = lateral,
+0 to 80 across the pitch). Edges between slots come from rule-based tactical
+connectivity (not a distance-based k-NN cut), so the graph encodes the
+connections a coach would draw on a chalkboard rather than a geometric
+neighborhood.
 
-The rule set (applied in order; see :func:`_build_edges`):
+The rule set (applied in order; see _build_edges):
 
   1. GK <-> every defender (CB / LCB / RCB / LB / RB / LWB / RWB).
   2. All CBs mutually connected; LB/LWB <-> leftmost CB; RB/RWB <->
@@ -24,7 +24,7 @@ The rule set (applied in order; see :func:`_build_edges`):
   9. Wingers (LW/LWF, RW/RWF) <-> same-side wide mids.
  10. Wingers <-> strikers and CAMs.
  11. Strikers mutually connected (forward-line cohesion).
- 12. Strikers <-> CM and CAM only (CDM is deliberately excluded -- the
+ 12. Strikers <-> CM and CAM only (CDM is deliberately excluded; the
      deep pivot shouldn't have a direct line to the striker).
  13. LAM <-> every striker; RAM <-> every striker (advanced wide mids
      feed the front line).
@@ -47,10 +47,10 @@ The rule set (applied in order; see :func:`_build_edges`):
 A formation's graph is identical across every match in which that
 formation is observed; different formations produce different graphs.
 
-This module is purely topological -- it doesn't attach any per-player
-features. The downstream GNN feature builder is responsible for mapping
-real-lineup slots (1..11) onto template indices and attaching the
-position / archetype / etc. features per node.
+This module is purely topological; it doesn't attach any per-player
+features. The downstream GNN feature builder maps real-lineup slots (1..11)
+onto template indices and attaches the position, archetype, and other
+features per node.
 """
 
 from __future__ import annotations
@@ -180,9 +180,9 @@ FORMATION_TEMPLATES: dict[str, list[tuple[str, float, float]]] = {
 
 
 def formation_template(formation: str) -> list[tuple[str, float, float]]:
-    """Return the 11-node template for ``formation``, GK as index 0.
+    """Return the 11-node template for formation, GK as index 0.
 
-    Raises ``KeyError`` if the formation string isn't recognized.
+    Raises KeyError if the formation string isn't recognized.
     """
     return [GK_POSITION] + FORMATION_TEMPLATES[formation]
 
@@ -192,12 +192,11 @@ def _dist(template: list[tuple[str, float, float]], i: int, j: int) -> float:
 
 
 def _build_edges(template: list[tuple[str, float, float]]) -> list[tuple[int, int]]:
-    """Apply the 12 tactical rules described in the module docstring.
+    """Apply the tactical rules described in the module docstring.
 
-    Distances are *only* used inside rule 8 to break the
-    "closest same-side wide attacker" tie -- not as a primary edge criterion
-    anywhere else. The output is the sorted set of undirected ``(i, j)``
-    edges with ``i < j`` and no self-loops.
+    Distances are only used inside rule 8 to break the closest same-side wide
+    attacker tie, not as a primary edge criterion anywhere else. Returns the
+    sorted set of undirected (i, j) edges with i < j and no self-loops.
     """
     labels = [t[0] for t in template]
     edges: set[tuple[int, int]] = set()
@@ -229,12 +228,12 @@ def _build_edges(template: list[tuple[str, float, float]]) -> list[tuple[int, in
     st = has_in(_STRIKER_LABELS)
     defenders = cb + lb + rb
 
-    # Rule 1 -- GK <-> every defender.
+    # Rule 1: GK <-> every defender.
     for g in gk:
         for d in defenders:
             add(g, d)
 
-    # Rule 2 -- All CBs mutually connected; fullbacks to their outer CB.
+    # Rule 2: All CBs mutually connected; fullbacks to their outer CB.
     for i, a in enumerate(cb):
         for b in cb[i + 1:]:
             add(a, b)
@@ -246,7 +245,7 @@ def _build_edges(template: list[tuple[str, float, float]]) -> list[tuple[int, in
         for f in rb:
             add(f, rightmost_cb)
 
-    # Rule 3 -- Every CB <-> every CDM. If no CDM exists (3-back formations
+    # Rule 3: Every CB <-> every CDM. If no CDM exists (3-back formations
     # like 3-4-3 / 3-4-1-2), fall back to the deepest central midfielder(s)
     # so the back line is still wired into the midfield.
     if cdm:
@@ -260,22 +259,22 @@ def _build_edges(template: list[tuple[str, float, float]]) -> list[tuple[int, in
             for d in deepest_mids:
                 add(c, d)
 
-    # Rule 4 -- CDMs and CAMs <-> every other midfielder.
+    # Rule 4: CDMs and CAMs <-> every other midfielder.
     for hub in cdm + cam:
         for m in all_mid:
             add(hub, m)
 
-    # Rule 5 -- Central-midfield mesh.
+    # Rule 5: Central-midfield mesh.
     for i, a in enumerate(central_mid):
         for b in central_mid[i + 1:]:
             add(a, b)
 
-    # Rule 6 -- Wide mids <-> all central mids.
+    # Rule 6: Wide mids <-> all central mids.
     for w in left_mid + right_mid:
         for c in central_mid:
             add(w, c)
 
-    # Rule 7 -- Same-side wide-mid mesh.
+    # Rule 7: Same-side wide-mid mesh.
     for i, a in enumerate(left_mid):
         for b in left_mid[i + 1:]:
             add(a, b)
@@ -283,7 +282,7 @@ def _build_edges(template: list[tuple[str, float, float]]) -> list[tuple[int, in
         for b in right_mid[i + 1:]:
             add(a, b)
 
-    # Rule 8 -- Each fullback to nearest same-side wide attacker.
+    # Rule 8: Each fullback to nearest same-side wide attacker.
     # If the formation has no LM/LAM/LW/LWF (or symmetric), fall back to the
     # nearest same-side central midfielder so wing-backs in formations like
     # 3-5-2 aren't stranded with only the back-line and the GK.
@@ -306,7 +305,7 @@ def _build_edges(template: list[tuple[str, float, float]]) -> list[tuple[int, in
         if t is not None:
             add(f, t)
 
-    # Rule 9 -- Wingers <-> same-side wide mids.
+    # Rule 9: Wingers <-> same-side wide mids.
     for w in lw:
         for m in left_mid:
             add(w, m)
@@ -314,33 +313,33 @@ def _build_edges(template: list[tuple[str, float, float]]) -> list[tuple[int, in
         for m in right_mid:
             add(w, m)
 
-    # Rule 10 -- Wingers <-> strikers and CAMs.
+    # Rule 10: Wingers <-> strikers and CAMs.
     for w in lw + rw:
         for s in st:
             add(w, s)
         for c in cam:
             add(w, c)
 
-    # Rule 11 -- Strikers mutually connected.
+    # Rule 11: Strikers mutually connected.
     for i, a in enumerate(st):
         for b in st[i + 1:]:
             add(a, b)
 
-    # Rule 12 -- Strikers <-> CM and CAM only (NOT CDM). The deep pivot
-    # is intentionally kept off the front line -- it should reach the
+    # Rule 12: Strikers <-> CM and CAM only (NOT CDM). The deep pivot
+    # is intentionally kept off the front line: it should reach the
     # striker through the rest of the midfield.
     for s in st:
         for c in cm + cam:
             add(s, c)
 
-    # Rule 13 -- Advanced wide mids (LAM / RAM) <-> strikers.
+    # Rule 13: Advanced wide mids (LAM / RAM) <-> strikers.
     lam = [i for i in left_mid if labels[i] == "LAM"]
     ram = [i for i in right_mid if labels[i] == "RAM"]
     for w in lam + ram:
         for s in st:
             add(w, s)
 
-    # Rule 14 -- Defensive triangle / double-pivot coverage.
+    # Rule 14: Defensive triangle / double-pivot coverage.
     # Every fullback <-> every CDM. Closes the fullback-outer-CB-CDM
     # triangle (rule 2 wires fullback-CB, rule 3 wires CB-CDM) and
     # provides the double-pivot-to-wingback connection that the press
@@ -349,7 +348,7 @@ def _build_edges(template: list[tuple[str, float, float]]) -> list[tuple[int, in
         for d in cdm:
             add(f, d)
 
-    # Rule 15 -- Wide overload triangle.
+    # Rule 15: Wide overload triangle.
     # LB/LWB <-> {LM, LAM}; RB/RWB <-> {RM, RAM}. Combined with rule 7
     # this closes the fullback-LM-LAM triangle on each flank. This
     # extends rule 8 (which only picks the *single* closest wide
@@ -361,11 +360,11 @@ def _build_edges(template: list[tuple[str, float, float]]) -> list[tuple[int, in
         for m in right_mid:
             add(f, m)
 
-    # Rule 16 -- True 3-back wide cover.
+    # Rule 16: True 3-back wide cover.
     # In a back-three with no fullbacks / wing-backs (3-4-3, 3-4-1-2,
     # 3-4-2-1) the outer CBs are responsible for the wide channel
     # themselves, so wire LCB <-> LM and RCB <-> RM. Skip when the
-    # formation has wing-backs (3-5-2 / 5-x-y) -- the wing-back already
+    # formation has wing-backs (3-5-2 / 5-x-y): the wing-back already
     # links the wide line and adding CB <-> LM/RM would jump over them.
     if cb and not lb and not rb:
         leftmost_cb = max(cb, key=lambda i: template[i][2])
@@ -377,7 +376,7 @@ def _build_edges(template: list[tuple[str, float, float]]) -> list[tuple[int, in
             if labels[m] == "RM":
                 add(rightmost_cb, m)
 
-    # Rule 17 -- Lone striker support.
+    # Rule 17: Lone striker support.
     # With a single striker AND no attacking mids (CAM / LAM / RAM) to
     # act as a buffer, LM and RM need a direct line to the front man
     # (4-4-1, 4-1-4-1, 5-4-1, 4-5-1, 3-4-3). When attacking mids exist
@@ -397,23 +396,23 @@ def _build_edges(template: list[tuple[str, float, float]]) -> list[tuple[int, in
 
 
 def formation_edges(formation: str) -> list[tuple[int, int]]:
-    """Return the canonical undirected edge list for ``formation``.
+    """Return the canonical undirected edge list for formation.
 
     Edges are built from a fixed set of tactical rules (see the module
-    docstring); the graph for a given formation string is deterministic
-    and identical across every match in which that formation is observed.
-    Node indices are 0..10 matching the order in :func:`formation_template`
-    (GK = 0, then the 10 outfield slots in template order).
+    docstring); the graph for a given formation string is deterministic and
+    identical across every match in which that formation is observed. Node
+    indices are 0..10 matching the order in formation_template (GK = 0, then
+    the 10 outfield slots in template order).
     """
     return _build_edges(formation_template(formation))
 
 
 def formation_graph(formation: str):
-    """Return ``(nodes, edges)`` for ``formation``."""
+    """Return (nodes, edges) for formation."""
     nodes = formation_template(formation)
     return nodes, _build_edges(nodes)
 
 
 def all_formation_graphs() -> dict[str, tuple[list, list]]:
-    """Return ``{formation_string: (nodes, edges)}`` for every template."""
+    """Return {formation_string: (nodes, edges)} for every template."""
     return {f: formation_graph(f) for f in FORMATION_TEMPLATES}

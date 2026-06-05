@@ -1,13 +1,10 @@
 """Intra-event clustering.
 
-For each (position group, logical event type) pair, fit a clustering model
-over individual event instances to recover qualitatively distinct event
-subtypes (e.g. short vs. long passes, progressive vs. lateral duels).
-
-Each fitted clustering pipeline (``StandardScaler -> MiniBatchKMeans``) is
-persisted to disk together with the feature column order so
-:mod:`archetypes.player_aggregation` can reapply the exact same transform
-when assigning cluster labels.
+For each (position group, event type) pair, fit a clustering model over
+individual events to find distinct event subtypes (short vs long passes,
+and so on). Each fitted pipeline (StandardScaler + MiniBatchKMeans) is
+saved with its feature column order so player_aggregation.py can reapply
+the same transform when assigning cluster labels.
 """
 
 from __future__ import annotations
@@ -25,9 +22,7 @@ from sklearn.preprocessing import StandardScaler
 from .position_groups import filter_events_by_group
 
 
-# ----------------------------------------------------------------------------
 # Per-event-type feature engineering
-# ----------------------------------------------------------------------------
 
 def _safe_float(s: pd.Series) -> pd.Series:
     return pd.to_numeric(s, errors="coerce")
@@ -110,10 +105,9 @@ _FEATURE_BUILDERS = {
 
 
 def build_event_feature_matrix(events: pd.DataFrame, event_type: str) -> pd.DataFrame:
-    """Extract a numeric feature matrix for clustering events of ``event_type``.
+    """Build the numeric feature matrix for clustering events of event_type.
 
-    Rows with any NaN in the resulting feature matrix are dropped -- the
-    cluster model is fit only on complete rows.
+    Rows with any NaN are dropped, so the model is fit only on complete rows.
     """
     if event_type not in _FEATURE_BUILDERS:
         raise KeyError(f"unknown event_type: {event_type!r}")
@@ -121,23 +115,18 @@ def build_event_feature_matrix(events: pd.DataFrame, event_type: str) -> pd.Data
     return feats.dropna()
 
 
-# ----------------------------------------------------------------------------
-# Model fit / persist / load
-# ----------------------------------------------------------------------------
+# Model fit, save, load
 
 def fit_event_clusters(
     features: pd.DataFrame,
     n_clusters: int,
     random_state: int = 0,
 ) -> dict[str, Any]:
-    """Fit ``StandardScaler -> MiniBatchKMeans`` on event-instance features.
+    """Fit StandardScaler + MiniBatchKMeans on event features.
 
-    Returns
-    -------
-    dict
-        ``{"pipeline": fitted Pipeline, "feature_cols": list[str]}`` -- the
-        column order is captured so :mod:`player_aggregation` can rebuild the
-        exact feature matrix at predict time.
+    Returns {"pipeline": fitted Pipeline, "feature_cols": list[str]}. The
+    column order is stored so player_aggregation can rebuild the same feature
+    matrix at predict time.
     """
     pipe = Pipeline([
         ("scaler", StandardScaler()),
@@ -159,13 +148,12 @@ def fit_all_event_clusters(
     output_dir: Path,
     random_state: int = 0,
 ) -> dict[tuple[str, str], dict[str, Any]]:
-    """Fit one clustering pipeline per (position group, logical event type)
-    and persist each to ``output_dir`` as ``<group>__<event_type>.joblib``.
+    """Fit one pipeline per (position group, event type) and save each to
+    output_dir as <group>__<event_type>.joblib.
 
-    ``events`` must already have ``position_group`` and ``logical_event_type``
-    columns attached (see :mod:`archetypes.position_groups`).
-
-    ``n_clusters_per_event`` is nested: ``{group: {event_type: k}}``.
+    events must already have position_group and logical_event_type columns
+    (see position_groups.py). n_clusters_per_event is nested as
+    {group: {event_type: k}}.
     """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -177,7 +165,7 @@ def fit_all_event_clusters(
             subset = filter_events_by_group(events, group, [et])
             feats = build_event_feature_matrix(subset, et)
             if len(feats) < k:
-                # not enough samples to cluster -- skip with a warning marker
+                # not enough samples to cluster
                 print(f"  [skip] {group}/{et}: only {len(feats)} usable events")
                 continue
             model = fit_event_clusters(
@@ -203,10 +191,10 @@ def load_event_clusters(input_dir: Path) -> dict[tuple[str, str], dict[str, Any]
 
 
 def predict_event_clusters(events: pd.DataFrame, model: dict[str, Any], event_type: str) -> np.ndarray:
-    """Predict cluster labels for ``events`` using ``model``.
+    """Predict cluster labels for events using model.
 
-    Returns an int array of the same length as ``events``. Rows for which a
-    full feature vector cannot be constructed receive ``-1``.
+    Returns an int array the same length as events; rows without a full
+    feature vector get -1.
     """
     feats = _FEATURE_BUILDERS[event_type](events)
     feats = feats[model["feature_cols"]]

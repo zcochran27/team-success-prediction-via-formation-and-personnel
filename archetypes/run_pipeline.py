@@ -55,9 +55,9 @@ def load_events(raw_path: Path) -> pd.DataFrame:
 
 
 def attach_season(events: pd.DataFrame, raw_dir: Path) -> pd.DataFrame:
-    """Attach a ``season`` column (calendar year, ``int``) by joining
-    ``events.matchId -> matches.seasonId -> seasons.name`` and pulling the
-    leading 4-digit year out of the season name (e.g. ``"2024 Fall" -> 2024``).
+    """Attach a season column (calendar year, int) by joining events.matchId
+    to matches.seasonId to seasons.name and pulling the leading 4-digit year
+    from the season name (e.g. "2024 Fall" -> 2024).
     """
     matches = pd.read_parquet(raw_dir / "matches.parquet", columns=["wyId", "seasonId"])
     seasons = pd.read_parquet(raw_dir / "seasons.parquet", columns=["seasonId", "name"])
@@ -76,8 +76,8 @@ def prepare_events(events: pd.DataFrame) -> pd.DataFrame:
     events = assign_position_groups(events, position_col="player_position")
     events["logical_event_type"] = derive_logical_event_type(events)
 
-    # Drop passes whose end location is the origin -- these are unrecorded
-    # endpoints in the Wyscout export (~0.37% of passes) and would otherwise
+    # Drop passes whose end location is the origin. These are unrecorded
+    # endpoints in the Wyscout export (~0.37% of passes) that would otherwise
     # contaminate the spatial pass clusters.
     junk_pass = (
         (events["logical_event_type"] == "pass")

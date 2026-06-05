@@ -1,8 +1,8 @@
-"""Cluster the per-player feature vectors into archetypes, per position group.
+"""Cluster per-player feature vectors into archetypes, per position group.
 
-Archetypes are position-group-specific: clustering happens separately within
-each of the 6 position groups, so an archetype label is only meaningful in
-the context of its group (e.g. ``CD-0`` vs. ``CM-0`` are unrelated).
+Clustering runs separately within each of the eight position groups, so an
+archetype label only means something within its group (CD-0 and CM-0 are
+unrelated).
 """
 
 from __future__ import annotations
@@ -25,11 +25,10 @@ def fit_archetype_clusters(
     n_clusters: int,
     random_state: int = 0,
 ) -> dict[str, Any]:
-    """Fit ``StandardScaler -> KMeans`` on the per-player feature vectors of
-    a single position group.
+    """Fit StandardScaler + KMeans on one position group's feature vectors.
 
-    ``player_features`` is expected to already be restricted to one position
-    group. Returns ``{"pipeline": fitted Pipeline, "feature_cols": ...}``.
+    player_features should already be restricted to one group. Returns
+    {"pipeline": fitted Pipeline, "feature_cols": ...}.
     """
     X = player_features[feature_cols].values
     pipe = Pipeline([
@@ -52,8 +51,8 @@ def fit_all_archetype_clusters(
     output_dir: Path,
     random_state: int = 0,
 ) -> dict[str, dict[str, Any]]:
-    """Fit one archetype clustering pipeline per position group and persist
-    each to ``output_dir`` as ``<group>.joblib``.
+    """Fit one archetype pipeline per position group and save each to
+    output_dir as <group>.joblib.
     """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)

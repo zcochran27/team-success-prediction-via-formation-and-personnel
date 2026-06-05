@@ -1,29 +1,20 @@
-"""Plot helpers for the half-with-subs graphs produced by
-:func:`features.build_graphs_subs.build_half_subs_graph`.
+"""Plot helpers for the half-with-subs graphs.
 
-Visualizes a single PyG ``Data`` object on a pitch background, with:
+Visualizes a single PyG Data object on a pitch background:
 
-  * **Nodes** colored by side (team1 vs team2) and shaded by starter /
-    substitute status. Layout: starters at their normalized template
-    coords; subs offset slightly along the y-axis so they don't sit on
-    top of the starter they replaced.
+  - Nodes colored by side (team1 vs team2) and shaded by starter/substitute
+    status. Starters sit at their normalized template coords; subs are offset
+    slightly along y so they don't overlap the starter they replaced.
+  - Edges drawn per type: formation edges (template adjacency plus
+    sub-inherited copies) in gray; sub edges (starter to substitute) in
+    orange, solid when the sub kept the slot and dashed when re-deployed;
+    matchup edges (paired-mode cross-team) in green, with line width scaled
+    by overlap_fraction (the share of half time both players were on
+    together).
 
-  * **Edges** drawn per type:
-
-    - *Formation* edges (template adjacency + sub-inherited copies) in
-      a neutral gray.
-    - *Sub* edges (starter ↔ substitute) in orange, with the
-      ``same_position`` flag controlling whether the line is solid
-      (kept the slot) or dashed (re-deployed).
-    - *Matchup* edges (paired-mode cross-team) in green, with line
-      width scaled by ``overlap_fraction`` (the share of half time both
-      players spent on the pitch together).
-
-The helpers are deliberately small and import-friendly so the demo
-notebook in :file:`graphs/notebooks/half_subs_graph_demo.ipynb` stays
-thin -- the notebook just loads a row, calls
-:func:`features.build_graphs_subs.build_half_subs_graph`, then calls
-``draw_single_team_graph`` or ``draw_paired_graph``.
+The helpers are small so the demo notebook
+(graphs/notebooks/half_subs_graph_demo.ipynb) stays thin: it loads a row,
+builds the graph, then calls draw_single_team_graph or draw_paired_graph.
 """
 
 from __future__ import annotations
@@ -70,12 +61,12 @@ _SUB_DY_YARDS = 5.5
 
 
 def _draw_pitch(ax: Axes) -> None:
-    """Draw a 120 x 80 yard pitch with standard markings on ``ax``.
+    """Draw a 120 x 80 yard pitch with standard markings on ax.
 
-    Coordinates are in yards: (0, 0) is the bottom-left corner, (120, 80)
-    the top-right. Markings included: pitch outline, halfway line, center
-    circle (10 yd radius) and spot, 18-yard penalty areas, 6-yard goal
-    areas, penalty spots (12 yd from goal line), and penalty arcs.
+    Coordinates are in yards: (0, 0) is the bottom-left corner, (120, 80) the
+    top-right. Markings: pitch outline, halfway line, center circle (10 yd
+    radius) and spot, 18-yard penalty areas, 6-yard goal areas, penalty spots
+    (12 yd from goal line), and penalty arcs.
     """
     L, W = PITCH_LENGTH, PITCH_WIDTH
     # Field surface + outline.
@@ -118,22 +109,20 @@ def _scale_to_pitch(
 ) -> torch.Tensor:
     """Map normalized [0, 1] template coords onto the 120 x 80 yard pitch.
 
-    The template grid (see ``graphs/templates.py``) was authored on a
-    nominal 100 x 80 tactical canvas where x=100 was the striker line.
+    The template grid (see graphs/templates.py) was authored on a nominal
+    100 x 80 tactical canvas where x=100 was the striker line.
 
-    **Single-team mode** (``team`` is ``None``): inset x to (10, 110) yd
-    so the GK lands ~16 yd from the own goal line and strikers land at
-    x=110 (10 yd from the opposing goal line, i.e. in the D).
+    Single-team mode (team is None): inset x to (10, 110) yd so the GK lands
+    about 16 yd from the own goal line and strikers land at x=110.
 
-    **Paired mode** (``team`` provided): the model receives team 2's
-    coords rotated 180 deg about the pitch center so matchup edges have
-    nonzero geometric features. We render that as a tactical matchup
-    overlay: team 1 occupies x in [0, 100] (its own goal at x=0, its
-    striker line at x=100), team 2 occupies x in [20, 120] (its own
-    goal at x=120, its striker line at x=20). The two ranges overlap
-    in [20, 100] -- the 80-yard band where matchups line up: team 1's
-    ST near team 2's CBs, midfielders contesting midfielders, team 1's
-    CBs near team 2's STs. Y axis is unchanged.
+    Paired mode (team provided): the model receives team 2's coords rotated
+    180 deg about the pitch center so matchup edges have nonzero geometric
+    features. We render that as a matchup overlay: team 1 occupies x in
+    [0, 100] (own goal at x=0, striker line at x=100), team 2 occupies x in
+    [20, 120] (own goal at x=120, striker line at x=20). The ranges overlap
+    in [20, 100], the band where matchups line up: team 1's ST near team 2's
+    CBs, midfielders contesting midfielders, team 1's CBs near team 2's STs.
+    Y axis is unchanged.
     """
     out = pos.clone()
     if team is None:
@@ -161,14 +150,12 @@ def _node_positions(
 ) -> torch.Tensor:
     """Return display coords on the 120 x 80 pitch.
 
-    Starters land at their scaled template coords; subs are offset in y
-    by ``_SUB_DY_YARDS`` so they don't sit on top of the starter they
-    replaced. Subs alternate +/- so multiple subs at the same slot fan
-    out symmetrically.
+    Starters land at their scaled template coords; subs are offset in y by
+    _SUB_DY_YARDS so they don't sit on top of the starter they replaced. Subs
+    alternate +/- so multiple subs at the same slot fan out symmetrically.
 
-    ``team`` switches between single-team scaling (full pitch inset) and
-    paired-mode scaling (each team in their own half) -- see
-    :func:`_scale_to_pitch`.
+    team switches between single-team scaling (full pitch inset) and
+    paired-mode scaling (each team in their own half); see _scale_to_pitch.
     """
     out = _scale_to_pitch(pos, team=team)
     sub_count = 0
@@ -199,9 +186,8 @@ def _resolve_labels(
 ) -> list[str]:
     """Return a human-readable label per node.
 
-    If ``vocab`` is supplied (e.g. ``POSITION_VOCAB`` or
-    ``ARCHETYPE_VOCAB``), uses it to decode ``data.x``. Otherwise returns
-    the raw category index as a string.
+    If vocab is supplied (e.g. POSITION_VOCAB or ARCHETYPE_VOCAB), uses it to
+    decode data.x. Otherwise returns the raw category index as a string.
     """
     cats = data.x.tolist()
     if vocab is None:
@@ -218,11 +204,10 @@ def draw_single_team_graph(
 ) -> Axes:
     """Render one team's graph (formation + sub edges) on a pitch background.
 
-    ``data`` should be the per-team ``Data`` object returned by
-    :func:`features.build_graphs_subs.build_half_subs_graph` in single
-    mode. ``vocab`` is optional -- pass ``POSITION_VOCAB`` or
-    ``ARCHETYPE_VOCAB`` from :mod:`features.vocab` to label nodes with
-    their text label rather than the raw embedding index.
+    data should be the per-team Data object returned by build_half_subs_graph
+    in single mode. vocab is optional: pass POSITION_VOCAB or ARCHETYPE_VOCAB
+    from features.vocab to label nodes with their text label rather than the
+    raw embedding index.
     """
     if ax is None:
         _, ax = plt.subplots(figsize=(7, 5.6))
@@ -284,11 +269,10 @@ def draw_paired_graph(
 ) -> Axes:
     """Render the joint team1+team2 graph with matchup edges weighted by overlap.
 
-    ``data`` is the paired-mode ``Data`` from
-    :func:`features.build_graphs_subs.build_half_subs_graph` (carries
-    ``data.team`` distinguishing the two sides). Matchup-edge line width
-    is scaled by ``overlap_fraction``: full-half overlaps look thick,
-    cameo-overlaps barely visible.
+    data is the paired-mode Data from build_half_subs_graph (carries
+    data.team distinguishing the two sides). Matchup-edge line width is scaled
+    by overlap_fraction: full-half overlaps look thick, brief ones barely
+    visible.
     """
     if ax is None:
         _, ax = plt.subplots(figsize=(9, 6.5))
@@ -321,7 +305,7 @@ def draw_paired_graph(
             lw = _SUB_STYLE["lw"]
             alpha = _SUB_STYLE["alpha"]
             linestyle = "-" if same_pos_flag > 0.5 else "--"
-        else:  # EDGE_TYPE_INTRA -- fade non-template-adjacent pairs
+        else:  # EDGE_TYPE_INTRA: fade non-template-adjacent pairs
             template_adj = float(edge_attr[k, 10].item())
             style = _INTRA_STYLE_TEMPLATE if template_adj > 0.5 else _INTRA_STYLE_OTHER
             color = style["color"]
@@ -347,7 +331,7 @@ def draw_paired_graph(
 
 
 def legend_handles() -> tuple[list, list[str]]:
-    """Return ``(handles, labels)`` for a shared legend describing edge / node types."""
+    """Return (handles, labels) for a shared legend describing edge/node types."""
     from matplotlib.lines import Line2D
     handles = [
         Line2D([0], [0], color=_INTRA_STYLE_TEMPLATE["color"], lw=1.5,

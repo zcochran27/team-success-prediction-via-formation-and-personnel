@@ -1,19 +1,16 @@
 """Permute lineup-snapshot slots into formation template-slot order.
 
-The raw Wyscout snapshot data lists 11 players in an order that does not
-match :func:`graphs.templates.formation_template` -- e.g. a 4-4-2 lineup
-might arrive as ``[GK, RB, LB, RCB, LCB, CM, RW, CM, ST, SS, LW]`` while
-the 4-4-2 template enumerates slots as ``[GK, LB, CB, CB, RB, LM, CM, CM,
-RM, ST, ST]``. Without realignment the visualization and the GNN both
-end up drawing or wiring nodes at the wrong template slot.
+The raw Wyscout snapshot lists 11 players in an order that doesn't match
+formation_template. For example, a 4-4-2 lineup might arrive as
+[GK, RB, LB, RCB, LCB, CM, RW, CM, ST, SS, LW] while the 4-4-2 template
+enumerates slots as [GK, LB, CB, CB, RB, LM, CM, CM, RM, ST, ST]. Without
+realignment the visualization and the GNN wire nodes to the wrong slot.
 
-:func:`align_lineup_to_template` solves a one-to-one assignment between
-the 11 lineup slots and the 11 template slots, minimizing the sum of
-squared Euclidean distances between each template slot's ``(x, y)`` and
-a canonical ``(x, y)`` for the lineup slot's position label. Hungarian
-assignment (:func:`scipy.optimize.linear_sum_assignment`) gives the
-globally optimal permutation in O(n^3); for n=11 this is essentially
-free.
+align_lineup_to_template solves a one-to-one assignment between the 11
+lineup slots and the 11 template slots, minimizing the sum of squared
+distances between each template slot's (x, y) and a canonical (x, y) for the
+lineup slot's position label. Hungarian assignment
+(scipy.optimize.linear_sum_assignment) gives the optimal permutation.
 """
 
 from __future__ import annotations
@@ -59,12 +56,12 @@ def align_lineup_to_template(
     formation: str,
     lineup_labels: Sequence[str],
 ) -> list[int]:
-    """Return ``perm`` such that ``lineup_labels[perm[k]]`` is the lineup slot
-    best matching template slot ``k``.
+    """Return perm such that lineup_labels[perm[k]] is the lineup slot best
+    matching template slot k.
 
-    The assignment minimises the total squared distance between each
-    template slot's ``(x, y)`` (from :func:`formation_template`) and the
-    canonical ``(x, y)`` for the lineup slot's position label.
+    The assignment minimizes the total squared distance between each template
+    slot's (x, y) (from formation_template) and the canonical (x, y) for the
+    lineup slot's position label.
     """
     if len(lineup_labels) != 11:
         raise ValueError(f"expected 11 lineup labels, got {len(lineup_labels)}")
@@ -85,5 +82,5 @@ def align_lineup_to_template(
 
 
 def aligned(labels: Sequence[str], perm: Sequence[int]) -> list[str]:
-    """Convenience: return ``[labels[perm[k]] for k in range(11)]``."""
+    """Convenience: return [labels[perm[k]] for k in range(11)]."""
     return [labels[perm[k]] for k in range(11)]

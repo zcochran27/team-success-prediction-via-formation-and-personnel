@@ -1,31 +1,26 @@
 """Graph builder for the half-with-subs GNN.
 
 Each (match, half, team) becomes a variable-size graph whose nodes are
-every player who appeared in the half (11 starters + 0..11 substitutes).
-Three edge types coexist on a single ``edge_index``:
+every player who appeared in the half (11 starters plus 0 to 11
+substitutes). Three edge types share one edge_index:
 
-  * **Formation** -- the starter template's tactical adjacency, plus
-    sub-inherited copies of those edges (a sub picks up the formation
-    neighbors of whoever they replaced).
-  * **Sub** -- bidirectional link between a substitute and the starter
-    they replaced. Carries the substitution minute and a same-position
-    flag as edge features.
-  * **Matchup** (paired mode only) -- every cross-team pair whose
-    on-pitch intervals overlap, weighted by ``overlap_fraction``
-    (shared minutes / half duration). Captures *who was actually on
-    the pitch together*, which a flat tabular row can't represent
-    without combinatorial blow-up.
+  - Formation: the starter template's tactical adjacency, plus sub-inherited
+    copies (a sub picks up the formation neighbors of whoever they replaced).
+  - Sub: a bidirectional link between a substitute and the starter they
+    replaced, carrying the substitution minute and a same-position flag.
+  - Matchup (paired mode only): every cross-team pair whose on-pitch
+    intervals overlap, weighted by overlap_fraction (shared minutes / half
+    duration). This captures who was actually on the pitch together.
 
-Edge type is exposed both implicitly (column-conditional features that
-are 0 outside the relevant type) and explicitly via a 3-d one-hot block.
-Edge ``same_team`` and ``[dist, dx, dy]`` (in normalized template coords)
-are always present. Stat-diff edge features (4-d, src-vs-dst on
-dribble/pass/aerial axes) are appended when ``use_stats`` is set --
-matching the convention from :mod:`features.build_graphs`.
+Edge type is exposed both implicitly (column-conditional features that are 0
+outside the relevant type) and explicitly via a 3-d one-hot block. The
+same_team flag and [dist, dx, dy] (normalized template coords) are always
+present. The 4-d stat-diff edge features (src vs dst on dribble/pass/aerial
+axes) are appended when use_stats is set.
 
-The builder is deliberately schema-driven: it reads from a row dict that
-has the column layout of ``data/processed/lineup_snapshots_half_subs.parquet``
-and returns a PyG :class:`~torch_geometric.data.Data` object.
+The builder reads from a row dict with the column layout of
+data/processed/lineup_snapshots_half_subs.parquet and returns a PyG Data
+object.
 """
 
 from __future__ import annotations
@@ -148,16 +143,11 @@ def _is_null(v: Any) -> bool:
 def _template_coords_for_starter(formation: str, slot_label: str) -> tuple[float, float]:
     """Return the normalized template (x, y) for a starter's template slot.
 
-    The starter has already been aligned to a template slot via
-    :func:`graphs.alignment.align_lineup_to_template`, so ``slot_label``
-    refers to the template's label at that slot. We look up the canonical
-    coord from the template entry (not from the player's recorded position),
-    which is what the existing template-based GNN does too.
+    The starter has already been aligned to a template slot, so slot_label is
+    the template's label there. We look up the canonical coord from the
+    template entry, not the player's recorded position.
     """
-    # `formation_template` returns 11 tuples of (label, x, y). We don't
-    # know the slot index from the label alone if the formation has
-    # duplicate labels, so caller passes (label, idx) via this helper's
-    # sister _template_coords_at_slot below. This wrapper just normalizes.
+    # formation_template returns 11 (label, x, y) tuples; look up by label.
     tmpl = formation_template(formation)
     for lab, x, y in tmpl:
         if lab == slot_label:
@@ -168,7 +158,7 @@ def _template_coords_for_starter(formation: str, slot_label: str) -> tuple[float
 
 
 def _template_coords_at_slot(formation: str, slot_idx: int) -> tuple[float, float]:
-    """Return normalized (x, y) for the template's ``slot_idx`` in ``formation``."""
+    """Return normalized (x, y) for the template's slot_idx in formation."""
     _, x, y = formation_template(formation)[slot_idx]
     return (x / _PITCH_X, y / _PITCH_Y)
 
@@ -182,24 +172,21 @@ def _position_coords(position_label: str) -> tuple[float, float]:
 def _resolve_subs_to_starters(
     row: pd.Series, side: Side, half_duration: float, half_start_min: float,
 ) -> list[int]:
-    """Return ``replaced_starter_idx`` per active sub slot (0..N_SUB_SLOTS-1).
+    """Return replaced_starter_idx per active sub slot (0..N_SUB_SLOTS-1).
 
-    Match heuristic: pair sub ``k`` to the still-unmatched starter whose
-    duration-in-half is closest to the sub's *time-since-half-start*
-    (within :data:`EDGE_TIMING_TOLERANCE_MIN`), preferring same-position
-    matches when the timing tie is close. Subs are processed in
-    chronological order so earlier subs reserve their starter first.
+    Pair sub k to the still-unmatched starter whose duration-in-half is
+    closest to the sub's time-since-half-start (within
+    EDGE_TIMING_TOLERANCE_MIN), preferring same-position matches on close
+    ties. Subs are processed in chronological order so earlier subs reserve
+    their starter first.
 
-    ``sub_start_min`` is stored in match-clock minutes (e.g. 72.1 for an
-    H2 substitution at the 72nd minute), so we subtract
-    ``half_start_min`` -- the match-clock start of this half (0 for H1,
-    45 for H2) -- to bring it into the same "minutes since half kickoff"
-    frame as ``starter_duration``. Forgetting this offset silently
-    breaks every H2 row, so it's the caller's job to pass the right
-    value (in practice, ``float(row["period_start_min"])``).
+    sub_start_min is stored in match-clock minutes (e.g. 72.1 for an H2 sub
+    in the 72nd minute), so we subtract half_start_min (0 for H1, 45 for H2)
+    to bring it into the same "minutes since half kickoff" frame as
+    starter_duration. The caller passes float(row["period_start_min"]).
 
-    Returns ``-1`` for sub slots that don't have a recorded sub player
-    *or* that can't be matched to a starter (rare; usually a data quirk).
+    Returns -1 for sub slots with no recorded sub player, or that can't be
+    matched to a starter.
     """
     matched: list[int] = [-1] * N_SUB_SLOTS
 
@@ -235,7 +222,7 @@ def _resolve_subs_to_starters(
                 continue
             dur = starter_durations[s]
             if dur >= half_duration - 0.05:
-                continue  # this starter played to the end -- not pulled
+                continue  # this starter played to the end, not pulled
             delta = abs(dur - sub_in_half)
             if delta > EDGE_TIMING_TOLERANCE_MIN:
                 continue
@@ -310,7 +297,7 @@ def _build_team_subgraph(
             nodes_in_template_slot[template_slot].append(sub_node)
             starter_was_subbed[st] = True
 
-    # ---- Node features ----------------------------------------------------
+    # Node features
     x_cat = torch.empty(n_nodes, dtype=torch.long)
     x_num = torch.zeros((n_nodes, NODE_NUM_DIM), dtype=torch.float)
     x_pos = torch.zeros((n_nodes, 2), dtype=torch.float)
@@ -369,7 +356,7 @@ def _build_team_subgraph(
     on_pitch_start = x_num[:, 2].clone() * half_duration
     on_pitch_end = x_num[:, 3].clone() * half_duration
 
-    # ---- Edges ------------------------------------------------------------
+    # Edges
     # Sub edges (the tactically-typed ones) get emitted first so we can
     # carve them out of the fully-connected intra-team pool below.
     src_list: list[int] = []
@@ -423,12 +410,11 @@ def _build_team_subgraph(
                 template_adjacent_set.add((min(a, b), max(a, b)))
 
     # 3) Fully-connected intra-team edges. Every pair of nodes on the same
-    #    team gets a bidirectional edge -- the model is expected to use
-    #    attention (with the ``is_template_adjacent`` flag, the
-    #    coord-derived ``dist/dx/dy``, and the node-feature block) to
-    #    figure out which pairings carry signal. Pairs already wired by a
-    #    sub edge are skipped so the same pair isn't represented under two
-    #    different edge types.
+    #    team gets a bidirectional edge; the model uses attention (with the
+    #    is_template_adjacent flag, the coord-derived dist/dx/dy, and the
+    #    node-feature block) to figure out which pairings carry signal. Pairs
+    #    already wired by a sub edge are skipped so the same pair isn't
+    #    represented under two different edge types.
     for i in range(n_nodes):
         for j in range(i + 1, n_nodes):
             if (i, j) in sub_pair_set:
@@ -448,9 +434,9 @@ def _build_team_subgraph(
         if n_edges else torch.empty((2, 0), dtype=torch.long)
     )
 
-    # Edge attr is filled in below by ``_finalize_edge_attr`` after we know
-    # the global node-position tensor (for distance / dx / dy). The intra-team
-    # graph carries same_team=1 throughout.
+    # Edge attr is filled in below by _finalize_edge_attr once we know the
+    # global node-position tensor (for distance, dx, dy). The intra-team graph
+    # carries same_team=1 throughout.
     return {
         "x_cat": x_cat,
         "x_num": x_num,
@@ -477,12 +463,12 @@ def _build_matchup_edges(
     team2_offset: int,
     half_duration: float,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Return matchup ``edge_index`` + per-edge feature components.
+    """Return the matchup edge_index and per-edge feature components.
 
     Every (i, j) pair with on-pitch interval overlap > 0 emits a
-    bidirectional edge. Cross-team edges carry ``same_team = 0``,
-    ``is_template_adjacent = 0`` (template adjacency is an intra-team
-    concept), and overlap-fraction in the ``overlap`` slot.
+    bidirectional edge. Cross-team edges carry same_team = 0,
+    is_template_adjacent = 0 (template adjacency is intra-team), and the
+    overlap fraction in the overlap slot.
     """
     n1 = on_start_t1.size(0)
     n2 = on_start_t2.size(0)
@@ -535,7 +521,7 @@ def _finalize_edge_attr(
     template_adj: torch.Tensor,
     stats: torch.Tensor | None,
 ) -> torch.Tensor:
-    """Assemble the ``(E, EDGE_BASE_DIM[+EDGE_STATS_DIM])`` edge feature matrix."""
+    """Assemble the (E, EDGE_BASE_DIM [+EDGE_STATS_DIM]) edge feature matrix."""
     if edge_index.numel() == 0:
         width = EDGE_BASE_DIM + (EDGE_STATS_DIM if stats is not None else 0)
         return torch.empty((0, width), dtype=torch.float)
@@ -553,9 +539,10 @@ def _finalize_edge_attr(
         template_adj.unsqueeze(1),
     ]
     if stats is not None:
-        # Same 4-axis stat-diff features as features.build_graphs._edge_features.
-        # Cols: src.dribble_success_rate - dst.def_duel_stop_rate, dst.dribble_success_rate
-        # - src.def_duel_stop_rate, src.pass_comp_rate - dst.pass_comp_rate,
+        # 4-axis stat-diff features (src vs dst). Cols:
+        # src.dribble_success_rate - dst.def_duel_stop_rate,
+        # dst.dribble_success_rate - src.def_duel_stop_rate,
+        # src.pass_comp_rate - dst.pass_comp_rate,
         # src.aerial_duel_win_rate - dst.aerial_duel_win_rate.
         src_stats = stats[edge_index[0]]
         dst_stats = stats[edge_index[1]]
@@ -578,9 +565,9 @@ def build_half_subs_graph(
 ) -> Data | tuple[Data, Data]:
     """Build the per-snapshot graph(s) for the half-with-subs model.
 
-    Returns a single ``Data`` for paired mode, or a tuple ``(team1, team2)``
-    for single mode (each is its own Data; the trainer subtracts their
-    predictions to enforce antisymmetry, matching the existing convention).
+    Returns a single Data for paired mode, or a (team1, team2) tuple for
+    single mode (each is its own Data; the trainer subtracts their
+    predictions to enforce antisymmetry).
     """
     half_duration = float(row["period_duration_min"])
     # Match-clock minute that this half starts at; the snapshot builder
@@ -601,7 +588,7 @@ def build_half_subs_graph(
             _block_to_data(team2_block, use_stats, half_duration, target=None),
         )
 
-    # paired -- assemble the joint graph with matchup edges.
+    # paired: assemble the joint graph with matchup edges.
     team2_block = _build_team_subgraph(
         row, "team2", kind, use_stats, use_coords, half_duration, half_start_min,
     )
@@ -610,12 +597,11 @@ def build_half_subs_graph(
 
     x_cat = torch.cat([team1_block["x_cat"], team2_block["x_cat"]])
     x_num = torch.cat([team1_block["x_num"], team2_block["x_num"]], dim=0)
-    # Rotate team-2 coords 180° about the (normalized) pitch center so
-    # opposing players in the same physical channel sit close to each
-    # other in the shared coordinate frame. Without this flip, matchup
-    # edges' ``dist / dx / dy`` features collapse to 0 (both teams at
-    # the same template coords) and the model loses the geometric
-    # signal that says "these guys are in opposing roles".
+    # Rotate team-2 coords 180 degrees about the (normalized) pitch center so
+    # opposing players in the same physical channel sit close together in the
+    # shared coordinate frame. Without this flip, matchup edges' dist/dx/dy
+    # features collapse to 0 (both teams at the same template coords) and the
+    # model loses the geometric signal for opposing roles.
     pos_team2_flipped = 1.0 - team2_block["x_pos"]
     pos = torch.cat([team1_block["x_pos"], pos_team2_flipped], dim=0)
     if use_stats:
@@ -682,7 +668,7 @@ def _block_to_data(
     half_duration: float,
     target: float | None,
 ) -> Data:
-    """Wrap a single-team block into a PyG ``Data`` with finalized edge_attr."""
+    """Wrap a single-team block into a PyG Data with finalized edge_attr."""
     edge_attr = _finalize_edge_attr(
         block["edge_index"],
         block["x_pos"],
@@ -709,5 +695,5 @@ def _block_to_data(
 
 
 def edge_attr_dim(use_stats: bool) -> int:
-    """Width of ``edge_attr`` (matches what the model layers expect)."""
+    """Width of edge_attr (matches what the model layers expect)."""
     return EDGE_BASE_DIM + (EDGE_STATS_DIM if use_stats else 0)

@@ -1,41 +1,33 @@
-"""Half-level lineup snapshot with explicit starter + substitute feature blocks.
+"""Half-level lineup snapshot with starter and substitute feature blocks.
 
 Each (match, half) becomes two focal-perspective rows (one per side as
-team1), with these per-team feature blocks:
+team1), with these per-team blocks:
 
-  * **Starter block** -- 11 slots in formation-template order. Per slot:
-    ``player_id``, ``position``, ``archetype``, the 10-D season stat
-    vector, and ``duration`` (minutes on the pitch in this half).
-    ``team1_position_1..11`` / ``team2_position_1..11`` mirror the
-    column names the rest of the pipeline (and
-    :func:`features.snapshots.filter_buildable_snapshots`) expect, so
-    this dataset slots into the existing tabular comparison harness.
-  * **Sub block** -- 11 slots in chronological-entry order (1st sub at
-    slot 1, 11th sub at slot 11). Per slot: ``player_id``, ``position``
-    (modal recorded position over their appearances), ``archetype``,
-    season stats, ``start_min`` (when they came on, in match-clock
-    minutes), and ``duration``. Unused slots are NaN-padded; in pro-league
-    halves slot 11 is filled in <0.6% of rows.
+  - Starter block: 11 slots in formation-template order. Per slot: player_id,
+    position, archetype, the 10-D season stat vector, and duration (minutes
+    on the pitch this half). The team1_position_1..11 / team2_position_1..11
+    names match what the rest of the pipeline (and
+    filter_buildable_snapshots) expect, so this dataset works with the
+    existing tabular harness.
+  - Sub block: 11 slots in chronological entry order (1st sub at slot 1, 11th
+    at slot 11). Per slot: player_id, position (modal recorded position over
+    their appearances), archetype, season stats, start_min (match-clock
+    minute they came on), and duration. Unused slots are NaN-padded.
 
-Why 11 + 11 = 22 slots? The empirical 22-player cap covers ~99.4% of
-pro-league half-sides; the remaining tail is dominated by NCAA matches
-where the substitution rule is unlimited and re-entry is sometimes
-allowed (which would also break the chronological-slot semantics). Any
-subs past slot 11 in the source data are dropped with a warning logged
-once per build.
+The 22-player cap (11 + 11) covers about 99.4% of pro-league half-sides. The
+tail is mostly NCAA matches with unlimited substitutions and re-entry, which
+would also break the chronological-slot semantics. Subs past slot 11 are
+dropped, with a count logged once per build.
 
-Match-state features (xG, goals, per-30 rates) are recomputed at
-half granularity by re-running :func:`formations.match_state.add_match_state_features`
-with the half boundaries as the snapshot window.
+Half-level match-state features (xG, goals, per-30 rates) are recomputed by
+re-running match_state.add_match_state_features over the half windows.
 
-Outputs (suffixed ``_half_subs`` so they coexist with the other variants):
+Outputs (suffixed _half_subs so they coexist with other variants):
+  data/processed/lineup_snapshots_half_subs.parquet
+  data/processed/train_snapshots_half_subs.parquet
+  data/processed/test_snapshots_half_subs.parquet
 
-  * ``data/processed/lineup_snapshots_half_subs.parquet``
-  * ``data/processed/train_snapshots_half_subs.parquet``
-  * ``data/processed/test_snapshots_half_subs.parquet``
-
-Usage (from repo root)::
-
+Usage (from repo root):
     python -m formations.lineups_half_subs
     python -m formations.lineups_half_subs --test-frac 0.2 --seed 0
 """
@@ -57,12 +49,12 @@ from graphs.alignment import align_lineup_to_template
 from .match_state import add_match_state_features
 
 
-# When a team's final period has ``period_end_min == NaN`` we replace it
-# with the match's end-of-clock minute so half-clipping math stays finite.
-# ``matches.duration`` only distinguishes regulation vs. ET, so we pick a
-# generous stoppage allowance for each category. Penalties are excluded
-# from the match clock (the shootout uses its own timeline), so a
-# Penalties match's continuous clock still ends at the end of ET.
+# When a team's final period has period_end_min == NaN we replace it with
+# the match's end-of-clock minute so half-clipping math stays finite.
+# matches.duration only distinguishes regulation vs ET, so we pick a generous
+# stoppage allowance per category. Penalties are excluded from the match clock
+# (the shootout has its own timeline), so a Penalties match's continuous clock
+# still ends at the end of ET.
 _DURATION_TO_END_MIN: dict[str, float] = {
     "Regular":   95.0,
     "ExtraTime": 125.0,
@@ -71,14 +63,14 @@ _DURATION_TO_END_MIN: dict[str, float] = {
 
 N_STARTER_SLOTS = 11
 N_SUB_SLOTS = 11
-# Tolerance (in minutes) for treating a player's first appearance as
-# "exactly at half-start". The formations table rounds period boundaries
-# to ~0.1 min, so any non-zero EPS just absorbs that quantization.
+# Tolerance (minutes) for treating a player's first appearance as at
+# half-start. The formations table rounds period boundaries to about 0.1 min,
+# so a small EPS absorbs that quantization.
 _START_EPS = 0.05
 
 
 def _match_to_season(matches_path: Path, seasons_path: Path) -> pd.Series:
-    """Map ``match_id -> season_year`` (4-digit int from ``seasons.name``)."""
+    """Map match_id to season_year (4-digit int from seasons.name)."""
     matches = pd.read_parquet(matches_path, columns=["wyId", "seasonId"])
     seasons = pd.read_parquet(seasons_path, columns=["seasonId", "name"])
     seasons["season"] = seasons["name"].str.extract(r"(\d{4})")[0].astype(int)
@@ -91,7 +83,7 @@ def _match_to_season(matches_path: Path, seasons_path: Path) -> pd.Series:
 def _clip_periods_to_half(
     team_periods: pd.DataFrame, half_start: float, half_end: float
 ) -> pd.DataFrame:
-    """Return periods that overlap ``[half_start, half_end)`` with start/end clipped."""
+    """Return periods overlapping [half_start, half_end) with start/end clipped."""
     df = team_periods[
         (team_periods["period_start_min"] < half_end)
         & (team_periods["period_end_min"] > half_start)
@@ -105,11 +97,11 @@ def _clip_periods_to_half(
 
 
 def _per_player_summary(clipped: pd.DataFrame) -> pd.DataFrame:
-    """One row per player_id with first_in / last_out / duration / modal position.
+    """One row per player_id with first_in, last_out, duration, modal position.
 
-    Modal position breaks ties by picking the position from the
-    *earliest* clipped period (so a starter who later shifted slots keeps
-    their initial role unless they spent more time elsewhere).
+    Modal position breaks ties by picking the position from the earliest
+    clipped period, so a starter who later shifted slots keeps their initial
+    role unless they spent more time elsewhere.
     """
     # Per (playerId, position) total duration, then keep the (playerId, position)
     # with the largest duration per playerId. Ties broken by earliest _clip_start
@@ -138,9 +130,9 @@ def _starter_initial_positions(
 ) -> dict[int, str]:
     """Position each starter held in the team's first period of the half.
 
-    Falls back to the starter's overall modal position if a starter
-    somehow isn't in the starting period (defensive guard -- in practice
-    every starter is by definition in the starting period).
+    Falls back to the starter's overall modal position if a starter somehow
+    isn't in the starting period (defensive guard; in practice every starter
+    is in the starting period).
     """
     first = clipped[clipped["period_index"] == starting_period_index]
     pos_in_first = first.set_index("playerId")["position"].to_dict()
@@ -162,8 +154,8 @@ def _build_team_half_block(
 ) -> dict[str, Any] | None:
     """Build the per-team column dict for one (match, team, half).
 
-    Returns ``None`` when the half can't be assembled (e.g., team has no
-    periods overlapping the half). Caller should drop those rows.
+    Returns None when the half can't be assembled (e.g. the team has no
+    periods overlapping the half); the caller drops those rows.
     """
     if clipped.empty:
         return None
@@ -178,17 +170,17 @@ def _build_team_half_block(
     starters = summary[starter_mask].copy()
     subs = summary[~starter_mask].copy().sort_values("first_in")
 
-    # Initial positions for starter slots come from the starting period --
-    # this is what defines the starting formation, so it's the right thing
-    # to align to the template (not the modal position).
+    # Initial positions for starter slots come from the starting period, which
+    # defines the starting formation, so that's what we align to the template
+    # (not the modal position).
     starter_ids = starters["playerId"].astype(int).tolist()
     initial_pos_by_pid = _starter_initial_positions(clipped, starter_ids, starting_idx)
     starters["initial_position"] = starters["playerId"].astype(int).map(initial_pos_by_pid)
 
     if len(starters) != N_STARTER_SLOTS or starters["initial_position"].isna().any():
-        # Data quirk -- typically a team-half with a partial period. We
-        # can't align without 11 starters, so emit a row with NaN starter
-        # slots so the buildable filter catches and drops it downstream.
+        # Data quirk, typically a team-half with a partial period. Without 11
+        # starters we can't align, so emit NaN starter slots and let the
+        # buildable filter drop the row downstream.
         starter_perm: list[int] | None = None
     else:
         try:
@@ -200,7 +192,7 @@ def _build_team_half_block(
 
     row: dict[str, Any] = {f"{side}_formation": starting_formation}
 
-    # ---- Starter slots in template order. ---------------------------------
+    # Starter slots in template order.
     for k in range(N_STARTER_SLOTS):
         if starter_perm is not None:
             r = starters.iloc[starter_perm[k]]
@@ -221,7 +213,7 @@ def _build_team_half_block(
             for stat_name in STAT_COLS:
                 row[f"{side}_starter_p{k+1}_{stat_name}"] = 0.0
 
-    # ---- Sub slots in chronological order, padded to N_SUB_SLOTS. ---------
+    # Sub slots in chronological order, padded to N_SUB_SLOTS.
     sub_records = subs.head(N_SUB_SLOTS)
     for k in range(N_SUB_SLOTS):
         if k < len(sub_records):
@@ -365,11 +357,10 @@ def build_half_subs_snapshots(
     df = pd.DataFrame(rows)
     print(f"       {len(df):,} (match, half) rows assembled")
 
-    # Recompute half-level xG / goal features by feeding the half windows
-    # back through the canonical match-state aggregator. Only carry the
-    # per-side totals + per-30 rates over -- the home/away differentials
-    # would become stale after the focal flip, and ``period_duration_min``
-    # is already on ``df`` from the row dict.
+    # Recompute half-level xG / goal features by feeding the half windows back
+    # through the match-state aggregator. Only carry the per-side totals and
+    # per-30 rates; the home/away differentials would be stale after the focal
+    # flip, and period_duration_min is already on df.
     print(f"[feat] half-level xG / goals from {events_path}")
     state_in = df[[
         "match_id", "period_start_min", "period_end_min",
@@ -434,7 +425,7 @@ def _to_focal_perspective(df: pd.DataFrame) -> pd.DataFrame:
 def _split_train_test(
     focal: pd.DataFrame, test_frac: float, seed: int
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Match-blocked split (same logic as ``scripts.build_train_test_split``)."""
+    """Match-blocked split (same logic as the standalone split script)."""
     match_ids = focal["match_id"].unique()
     rng = np.random.default_rng(seed)
     shuffled = match_ids.copy()

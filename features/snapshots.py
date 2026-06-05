@@ -1,29 +1,25 @@
 """Shared snapshot filter: drop rows the graph builder cannot consume.
 
-The graph models need every snapshot to satisfy three structural
-conditions that the lineup parquet does not enforce on its own:
+The graph models need every snapshot to meet three structural conditions
+that the lineup parquet does not enforce:
 
-  1. Both teams' formations are in :data:`graphs.templates.FORMATION_TEMPLATES`,
-     so the rule-based formation-edge builder has a topology to emit.
-  2. Both formations' templates have all 11 slots. A handful of registered
-     formations (e.g. ``"4-4-1"``) only cover 10 slots and represent
-     post-red-card states; the per-half modal collapser can emit such
-     rows with 11 fully-populated player slots, which then crash
-     :func:`graphs.alignment.align_lineup_to_template`.
+  1. Both teams' formations are in graphs.templates.FORMATION_TEMPLATES, so
+     the rule-based formation-edge builder has a topology to emit.
+  2. Both templates have all 11 slots. A few registered formations (e.g.
+     "4-4-1") only cover 10 slots and represent post-red-card states; the
+     per-half modal collapser can emit such rows with 11 populated slots,
+     which then crash graphs.alignment.align_lineup_to_template.
   3. All 22 position labels are non-null, so the embedding vocabulary can
-     resolve every slot and so :func:`graphs.alignment.align_lineup_to_template`
-     has something to score each lineup slot against.
+     resolve every slot and the aligner has something to score against.
 
-Archetype labels are deliberately NOT filtered. Many players don't have a
-season-level archetype (sub minutes too low, missing season data, etc.),
-and dropping those rows would shrink the dataset by ~60 %. Instead, NaN
-archetypes are replaced downstream with the ``"MISSING"`` sentinel
-(present in :data:`features.build_graphs.ARCHETYPE_VOCAB`) so the
-fact-of-missingness becomes a learnable signal.
+Archetype labels are intentionally not filtered. Many players have no
+season-level archetype (too few sub minutes, missing season data, etc.),
+and dropping those rows would shrink the dataset by about 60%. Instead, NaN
+archetypes are replaced downstream with the "MISSING" sentinel so the
+missingness becomes a learnable signal.
 
-Both the GNN dataset and the tabular comparison apply this filter so the
-two pipelines train and validate on the same ~74 k-row subset of the raw
-~80 k snapshot table.
+Both the GNN dataset and the tabular comparison apply this filter, so the
+two pipelines train and validate on the same subset of the snapshot table.
 """
 
 from __future__ import annotations
@@ -46,14 +42,9 @@ _FULL_FORMATIONS: frozenset[str] = frozenset(
 def filter_buildable_snapshots(df: pd.DataFrame) -> pd.DataFrame:
     """Return rows that satisfy the graph builder's structural prerequisites.
 
-    Three filters AND-ed:
-
-    - Both ``team1_formation`` and ``team2_formation`` map to an 11-slot
-      template in :data:`graphs.templates.FORMATION_TEMPLATES`.
-    - All 22 position columns non-null.
-
-    The index is reset on the returned frame so downstream code can index
-    rows with ``.iloc[i]`` safely.
+    Keeps rows where both team1_formation and team2_formation map to an
+    11-slot template in FORMATION_TEMPLATES and all 22 position columns are
+    non-null. The index is reset so downstream code can use .iloc[i] safely.
     """
     keep = (
         df[_FORMATION_COLS[0]].isin(_FULL_FORMATIONS)

@@ -1,14 +1,10 @@
-"""Aggregate event-instance cluster labels into per-player feature vectors.
+"""Aggregate event cluster labels into per-player feature vectors.
 
-For each player, this module:
-  1. Looks up the cluster label for each of their events using the models
-     fit by :mod:`archetypes.event_clustering`.
-  2. Aggregates those labels into a feature vector encoding behavioral
-     tendencies: for each event type, ``(% of total actions, % in cluster 0,
-     % in cluster 1, ...)``.
-
-The output (one row per player, plus position group label) is the input to
-:mod:`archetypes.archetype_clustering`.
+For each player we look up the cluster label of each event (using the
+models from event_clustering.py) and turn those labels into a feature
+vector: per event type, the share of total actions and the share falling in
+each cluster. The result, one row per player-season, feeds
+archetype_clustering.py.
 """
 
 from __future__ import annotations
@@ -27,11 +23,10 @@ def assign_event_clusters(
     events: pd.DataFrame,
     cluster_models: dict[tuple[str, str], dict[str, Any]],
 ) -> pd.DataFrame:
-    """Append a ``cluster`` column to ``events`` using the fit cluster models.
+    """Add a cluster column to events using the fitted cluster models.
 
-    ``events`` must already have ``position_group`` and ``logical_event_type``
-    columns. Rows that don't fall into any ``(group, event_type)`` we have a
-    model for receive ``cluster = -1``.
+    events must already have position_group and logical_event_type columns.
+    Rows with no model for their (group, event_type) get cluster = -1.
     """
     out = events.copy()
     out["cluster"] = -1
@@ -51,10 +46,9 @@ def aggregate_player_vector(
 ) -> pd.Series:
     """Build the feature vector for a single player.
 
-    Layout, in canonical event-type order:
-    ``[pct_total_<et>, pct_cluster_<et>_0, pct_cluster_<et>_1, ...]`` for
-    each event type in ``event_types``. If the player produced zero events of
-    a given type, all of that block's entries are 0.
+    In event-type order: [pct_total_<et>, pct_cluster_<et>_0,
+    pct_cluster_<et>_1, ...] for each event type. If the player has no events
+    of a type, that block is all zeros.
     """
     total = max(len(player_events), 1)
     parts: dict[str, float] = {}
@@ -80,20 +74,17 @@ def build_player_feature_table(
     min_events_per_player: int = 100,
     output_path: Path | None = None,
 ) -> pd.DataFrame:
-    """Build a player-season-level feature table for archetype clustering.
+    """Build a player-season feature table for archetype clustering.
 
-    ``events`` must already have ``position_group``, ``logical_event_type``,
-    ``season``, and ``cluster`` columns attached.
+    events must already have position_group, logical_event_type, season, and
+    cluster columns. n_clusters_per_event is nested as {group: {event_type: k}}.
 
-    ``n_clusters_per_event`` is nested: ``{group: {event_type: k}}``.
-
-    One row per ``(player_id, season)``: each player-season is assigned the
-    position group they logged the most relevant events in *that season*, and
-    the feature vector is computed from that season's events only. A
-    player-season is dropped if it has fewer than ``min_events_per_player``
-    relevant events in its primary group, so the same player can appear in
-    some seasons and not others -- and can land in different archetypes
-    across seasons.
+    One row per (player_id, season). Each player-season is assigned the
+    position group it logged the most relevant events in that season, and the
+    feature vector uses only that season's events. A player-season is dropped
+    if it has fewer than min_events_per_player relevant events in its primary
+    group, so a player can appear in some seasons and not others, and can land
+    in different archetypes across seasons.
     """
     # Determine each (player, season)'s primary position group by event
     # volume on the event types relevant to that group, that season.
@@ -128,9 +119,8 @@ def build_player_feature_table(
             if (pid, season) not in keys:
                 continue
             vec = aggregate_player_vector(pdf, event_types, group_k)
-            # Modal raw Wyscout position the player held this season (among
-            # events that fed the feature vector). Ties broken by first
-            # occurrence -- arbitrary but stable.
+            # Most common raw Wyscout position this season, among the events
+            # that fed the feature vector. Ties broken by first occurrence.
             pos_mode = pdf["player_position"].mode()
             player_position = pos_mode.iloc[0] if not pos_mode.empty else pd.NA
             rows.append({
