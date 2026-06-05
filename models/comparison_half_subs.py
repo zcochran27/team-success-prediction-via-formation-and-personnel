@@ -426,7 +426,7 @@ def plot_residual_hists(
         )
         ax.grid(alpha=0.3)
         if idx // ncols == nrows - 1:
-            ax.set_xlabel("pred − target")
+            ax.set_xlabel("pred - target")
     for j in range(n, nrows * ncols):
         axes[j // ncols, j % ncols].axis("off")
     fig.suptitle("Residuals - half-subs models", y=1.005)
