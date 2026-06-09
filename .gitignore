@@ -17,6 +17,17 @@ __pycache__/
 # Jupyter
 .ipynb_checkpoints/
 
+# LaTeX build artifacts (regenerated on every compile; keep the .pdf)
+*.aux
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.toc
+*.bbl
+*.blg
+*.synctex.gz
+
 # Virtual environments
 .venv/
 venv/

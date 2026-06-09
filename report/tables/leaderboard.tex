@@ -6,22 +6,22 @@
 \toprule
 kind & opponent & stats & family & MAE & RMSE & MSE & R$^2$ & sign acc \\
 \midrule
-arch & ego & no & gnn & 0.3415 & 0.4611 & 0.2126 & 0.1848 & 0.6174 \\
-arch & ego & no & tab & 0.3673 & 0.4982 & 0.2482 & 0.0483 & 0.5838 \\
-arch & ego & yes & gnn & 0.3217 & 0.4362 & 0.1902 & 0.2706 & 0.6519 \\
-arch & ego & yes & tab & 0.3538 & 0.4793 & 0.2298 & 0.1191 & 0.5973 \\
+arch & single & no & gnn & 0.3415 & 0.4611 & 0.2126 & 0.1848 & 0.6174 \\
+arch & single & no & XGBoost & 0.3673 & 0.4982 & 0.2482 & 0.0483 & 0.5838 \\
+arch & single & yes & gnn & 0.3217 & 0.4362 & 0.1902 & 0.2706 & 0.6519 \\
+arch & single & yes & XGBoost & 0.3538 & 0.4793 & 0.2298 & 0.1191 & 0.5973 \\
 arch & matchup & no & gnn & 0.3419 & 0.4640 & 0.2153 & 0.1744 & 0.6067 \\
-arch & matchup & no & tab & 0.3446 & 0.4689 & 0.2198 & 0.1572 & 0.6151 \\
+arch & matchup & no & XGBoost & 0.3446 & 0.4689 & 0.2198 & 0.1572 & 0.6151 \\
 arch & matchup & yes & gnn & \textbf{0.3202} & \textbf{0.4326} & \textbf{0.1871} & \textbf{0.2826} & \textbf{0.6592} \\
-arch & matchup & yes & tab & 0.3246 & 0.4415 & 0.1949 & 0.2526 & 0.6467 \\
-pos & ego & no & gnn & 0.3623 & 0.5034 & 0.2534 & 0.0285 & 0.5459 \\
-pos & ego & no & tab & 0.3918 & 0.5275 & 0.2782 & -0.0668 & 0.5397 \\
-pos & ego & yes & gnn & 0.3276 & 0.4437 & 0.1969 & 0.2450 & 0.6352 \\
-pos & ego & yes & tab & 0.3507 & 0.4733 & 0.2240 & 0.1410 & 0.6028 \\
+arch & matchup & yes & XGBoost & 0.3246 & 0.4415 & 0.1949 & 0.2526 & 0.6467 \\
+pos & single & no & gnn & 0.3623 & 0.5034 & 0.2534 & 0.0285 & 0.5459 \\
+pos & single & no & XGBoost & 0.3918 & 0.5275 & 0.2782 & -0.0668 & 0.5397 \\
+pos & single & yes & gnn & 0.3276 & 0.4437 & 0.1969 & 0.2450 & 0.6352 \\
+pos & single & yes & XGBoost & 0.3507 & 0.4733 & 0.2240 & 0.1410 & 0.6028 \\
 pos & matchup & no & gnn & 0.3648 & 0.5073 & 0.2574 & 0.0132 & 0.5326 \\
-pos & matchup & no & tab & 0.3938 & 0.5246 & 0.2752 & -0.0552 & 0.5825 \\
+pos & matchup & no & XGBoost & 0.3938 & 0.5246 & 0.2752 & -0.0552 & 0.5825 \\
 pos & matchup & yes & gnn & 0.3269 & 0.4431 & 0.1963 & 0.2473 & 0.6498 \\
-pos & matchup & yes & tab & 0.3274 & 0.4407 & 0.1942 & 0.2555 & 0.6433 \\
+pos & matchup & yes & XGBoost & 0.3274 & 0.4407 & 0.1942 & 0.2555 & 0.6433 \\
 \bottomrule
 \end{tabular}
 }

@@ -69,7 +69,8 @@ representations. Across sixteen model variants, a graph neural network
 that combines data-driven archetypes with season statistics gave the
 best result, predicting xG differential with an R$^2$ of $0.283$ and a
 sign accuracy of $0.659$. These results suggest that team success can be
-partially predicted from formation and personnel choices alone.
+partially predicted from formation and personnel choices alone. This can 
+be applied to both game time roster selection and recruiting choices.
   \end{abstract}
   \vspace{1.5em}
   \end{@twocolumnfalse}
@@ -104,7 +105,7 @@ predict success. We break this into four questions:
   \item \textbf{Quality encoding.} Does a player's season statistical
         profile improve prediction?
   \item \textbf{Opponent conditioning.} Does adding the opponent's
-        lineup and personnel improve prediction (matchup vs.\ ego)?
+        lineup and personnel improve prediction (matchup vs.\ single)?
   \item \textbf{Representation.} Does a graph neural network outperform a
         tabular XGBoost model?
 \end{enumerate}
@@ -175,7 +176,7 @@ expected to outscore team~$2$, so a model that recovers the sign of $y$
 has identified which team was expected to do better.
 
 \subsection{Data}
-The data comes from Wyscout~\citep{pappalardo2019} and covers more than
+The data comes from Wyscout and covers more than
 $7{,}000$ NCAA Division I matches from 2020 to 2024. Each match has event
 data, which records every on-ball event such as passes, shots, and duels,
 and formation data, which records each team's lineup and formation.
@@ -254,7 +255,7 @@ test set, so the results are directly comparable.
 \subsection{Models}
 
 \subsubsection{Tabular XGBoost baseline}
-The baseline is a gradient-boosted tree model~\citep{chen2016} trained on
+The baseline is a gradient-boosted tree model trained on
 the dataset in its tabular form. It learns the relationship between the
 lineup features and the target without any explicit graph structure.
 
@@ -288,6 +289,7 @@ Figure~\ref{fig:graph-modes} shows both graph construction modes.
 
 \begin{figure}[H]
 \centering
+\refstepcounter{figure}\label{fig:graph-modes}
 \begin{subfigure}{\linewidth}
   \centering
   \includegraphics[width=\linewidth]{graph_single_team1.png}
@@ -304,7 +306,6 @@ Figure~\ref{fig:graph-modes} shows both graph construction modes.
   \caption{\textbf{Paired mode.} Both teams in one $22+$-node graph.}
   \label{fig:graph-paired}
 \end{subfigure}
-\label{fig:graph-modes}
 \end{figure}
 
 \subsubsection{Model variants}
@@ -313,7 +314,7 @@ tactical encoding:
 \begin{itemize}
   \item \textbf{Personnel encoding.} \texttt{position} (raw position
         labels) vs.\ \texttt{archetype} (data-driven clusters).
-  \item \textbf{Opponent conditioning.} \texttt{ego} (single-team graph)
+  \item \textbf{Opponent conditioning.} \texttt{single} (single-team graph)
         vs.\ \texttt{matchup} (paired-team graph).
   \item \textbf{Quality encoding.} \texttt{no\_stats} (no season stats)
         vs.\ \texttt{stats} (10-D player-season stats, plus stat-diff
