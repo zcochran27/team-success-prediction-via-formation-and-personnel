@@ -106,14 +106,13 @@ writes a match-blocked 80/20 train/test split.
 Three model families share the same three design axes (personnel: position vs
 archetype; opponent: ego vs matchup; quality: with or without season stats):
 
-- tab: XGBoost on the 11 starter slots per team.
-- tab_subs: XGBoost on the starters plus all substitute slots.
-- gnn_subs: `HalfSubsGNN`, a typed-edge graph attention network over the
+- tabular: XGBoost on the starters plus all substitute slots.
+- graph nueral network: `HalfSubsGNN`, a typed-edge graph attention network over the
   per-half lineup graph. Players are nodes; edges are intra-team (template
   adjacency plus sub-inherited copies), sub (a substitute and the starter they
   replaced), and matchup (cross-team pairs weighted by shared time on the
   pitch, paired mode only). In paired mode the prediction is
-  `head(team1) - head(team2)`, so a lineup facing itself predicts zero.
+  `head(team1) - head(team2)`.
 
 ## 6. Results
 
@@ -144,8 +143,7 @@ graphs/       formation templates, lineup-to-template alignment, visualization
 models/       HalfSubsGNN + cross-model comparison and diagnostics helpers
 configs/      config.yaml (paths + clustering hyperparameters)
 report/       LaTeX report
-scripts/      GNN train/predict CLIs (gitignored)
-data/         raw/ and processed/ (gitignored)
+
 ```
 
 ## 9. Setup
